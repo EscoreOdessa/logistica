@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Расходы на доставку</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: рабочий инструмент — карта и маршрут слева, итог справа (на телефоне — друг под другом) */
+:root{
+  --bg:#f5f6f2; --surface:#ffffff; --surface-2:#eef0e9; --line:#d9ddd1;
+  --fg:#1d2219; --muted:#5f6858; --accent:#2f6f3e; --accent-fg:#ffffff;
+  --sun:#e0a321; --danger:#b3412f; --route:#2563c9;
+  --font-ui:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-num:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141812; --surface:#1c211a; --surface-2:#242a21; --line:#343c30;
+  --fg:#e7ebe2; --muted:#9aa492; --accent:#6dbb7f; --accent-fg:#0f1a11;
+  --sun:#f0b94a; --danger:#e57a66; --route:#6fa3ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141812; --surface:#1c211a; --surface-2:#242a21; --line:#343c30;
+  --fg:#e7ebe2; --muted:#9aa492; --accent:#6dbb7f; --accent-fg:#0f1a11;
+  --sun:#f0b94a; --danger:#e57a66; --route:#6fa3ff; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--font-ui);padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-block:20px 12px}
+h1{font-size:22px;margin:0;font-weight:700;text-wrap:balance}
+h1 small{display:block;font-size:13px;font-weight:400;color:var(--muted)}
+h2{font-size:16px;margin:0 0 12px;font-weight:600}
+h3{font-size:13px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+nav.tabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:999px;flex-wrap:wrap}
+nav.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-weight:500;padding:7px 16px;border-radius:999px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+[hidden]{display:none!important}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0;flex:1 1 140px}
+.stack>label.f{flex:0 0 auto}
+label.f span.hint{font-size:12px}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+input[type=number]{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);padding:0}
+.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
+.btn.ghost:hover{color:var(--danger);background:var(--surface-2)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.on{background:var(--route);border-color:var(--route);color:#fff}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+/* карта */
+#map{height:380px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);z-index:0}
+#map.picking{cursor:crosshair}
+#map.picking .leaflet-container,#map.picking.leaflet-container{cursor:crosshair}
+@media (max-width:560px){#map{height:300px}}
+.maphint{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.status{font-size:13px;padding:8px 10px;border-radius:8px;background:var(--surface-2);color:var(--muted)}
+.status.ok{color:var(--fg)}
+.status.err{color:var(--danger)}
+.pinicon{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--route);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;transform:translate(-50%,-50%)}
+.pinicon span{color:#fff;font:600 12px/1 var(--font-ui)}
+.pinicon.base{background:var(--accent)}
+/* маршрут: точки и участки */
+.route{display:flex;flex-direction:column}
+.stop{display:grid;grid-template-columns:28px minmax(90px,130px) minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.num{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:600;background:var(--line);color:var(--fg)}
+.num.ok{background:var(--route);color:#fff}
+.addrbox{position:relative;min-width:0}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:20;max-height:280px;overflow:auto}
+.sugg button{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--line)}
+.sugg button:last-child{border-bottom:0}
+.sugg button:hover,.sugg button:focus-visible{background:var(--surface-2)}
+.sugg small{display:block;color:var(--muted);font-size:12px}
+.sugg .tag{font-size:11px;color:var(--accent);font-weight:600;margin-right:6px}
+.sugg .none{padding:8px 10px;color:var(--muted);font-size:13px}
+.leg{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 4px 12px;padding:6px 0 6px 22px;border-left:3px dashed var(--line);font-size:13px;color:var(--muted)}
+.leg.loaded{border-left:3px solid var(--sun)}
+.leg input[type=number]{width:96px;text-align:right;padding:5px 8px}
+.leg .chk{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.leg .src{font-size:12px}
+.leg .src button{font:inherit;border:0;background:none;color:var(--route);cursor:pointer;padding:0;text-decoration:underline}
+@media (max-width:560px){
+  .stop{grid-template-columns:28px minmax(0,1fr) auto auto}
+  .stop .role{grid-column:2/-1}
+  .stop .addrbox{grid-column:1/3}
+}
+.legend{font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+/* итог */
+.result{position:sticky;top:12px}
+.total{font-family:var(--font-num);font-size:34px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.total small{font-size:15px;color:var(--muted);font-weight:400}
+.sub{color:var(--muted);font-size:13px}
+dl.break{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:14px 0 0;font-size:14px}
+dl.break dt{color:var(--muted)}
+dl.break dd{margin:0;text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+dl.break .sep{grid-column:1/-1;border-top:1px dashed var(--line);margin:4px 0}
+dl.break i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--surface-2);margin-top:14px}
+.bar span{display:block;height:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
+.chip b{color:var(--fg);font-weight:600;font-family:var(--font-num)}
+.note{font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:8px;padding:8px 10px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:1000}
+/* таблицы */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;background:var(--surface-2)}
+td.n,th.n{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:0}
+tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--line);border-bottom:0}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.kpi div{font-family:var(--font-num);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.toolbar .row{align-items:center}
+.vehicles{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+@media (max-width:400px){.vehicles{grid-template-columns:minmax(0,1fr)}}
+.vehicle.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.badge{font-size:11px;font-weight:600;color:var(--accent-fg);background:var(--accent);padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.derived{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.derived b{font-family:var(--font-num);color:var(--fg)}
+.places td{white-space:normal}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Расходы на доставку оборудования<small>Поставщик → склад → клиент · Одесса и область</small></h1>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="calc" aria-selected="true">Калькулятор</button>
+      <button role="tab" data-tab="log" aria-selected="false">Журнал рейсов</button>
+      <button role="tab" data-tab="cars" aria-selected="false">Машины и адреса</button>
+    </nav>
+  </header>
+
+  <!-- ============ КАЛЬКУЛЯТОР ============ -->
+  <section class="panel" id="tab-calc">
+    <div class="grid">
+      <div class="stack">
+        <div class="card stack">
+          <div class="toolbar">
+            <label class="f" style="flex:1 1 220px">Машина<select id="c-vehicle"></select></label>
+            <div class="presets" style="align-self:end">
+              <button class="btn small" data-preset="full">Через склад</button>
+              <button class="btn small" data-preset="direct">Напрямую клиенту</button>
+              <button class="btn small" data-preset="stock">Со склада клиенту</button>
+            </div>
+          </div>
+          <div>
+            <div id="map" role="application" aria-label="Карта маршрута"></div>
+            <div class="maphint"><span id="map-hint">Найдите адрес в поле точки или нажмите «На карте» и кликните по карте. Метки можно перетаскивать.</span></div>
+          </div>
+          <div class="route" id="route"></div>
+          <div class="toolbar">
+            <div class="legend"><span><i style="background:var(--sun)"></i>с грузом</span><span><i style="background:var(--line)"></i>порожняком</span></div>
+            <button class="btn small" id="add-stop">+ Точка</button>
+          </div>
+          <div class="status" id="route-status">Укажите адреса всех точек — километраж посчитается автоматически.</div>
+        </div>
+
+        <div class="card stack">
+          <h2 style="margin:0">Дополнительно за рейс</h2>
+          <div class="row">
+            <label class="f">Платные дороги, парковка, грн<input type="number" id="c-tolls" min="0" step="10" value="0"></label>
+            <label class="f">Водитель / суточные, грн<input type="number" id="c-driver" min="0" step="50" value="0"></label>
+          </div>
+          <div class="row">
+            <label class="f">Сумма заказа, грн <span class="hint">необязательно, для доли логистики</span><input type="number" id="c-order-sum" min="0" step="1000" value=""></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack result">
+        <div class="card">
+          <h3>Стоимость рейса</h3>
+          <div class="total" id="r-total">0 <small>грн</small></div>
+          <div class="sub" id="r-sub"></div>
+          <div class="bar" id="r-bar"></div>
+          <dl class="break" id="r-break"></dl>
+          <div class="chips" id="r-chips"></div>
+        </div>
+
+        <div class="card stack" id="compare-card" hidden>
+          <h3 style="margin:0">Этот рейс на других машинах</h3>
+          <dl class="break" id="r-compare" style="margin:0"></dl>
+        </div>
+
+        <form class="card stack" id="save-form">
+          <h3 style="margin:0">Записать в журнал</h3>
+          <div class="row">
+            <label class="f">Дата<input type="date" id="s-date" required></label>
+            <label class="f">№ заказа<input type="text" id="s-order" placeholder="напр. 2026-145"></label>
+          </div>
+          <label class="f">Клиент / объект<input type="text" id="s-client" placeholder="напр. Петренко, СЭС 10 кВт, Черноморск"></label>
+          <label class="f">Комментарий<input type="text" id="s-note" placeholder="что везли"></label>
+          <button class="btn primary" type="submit">Сохранить рейс</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ЖУРНАЛ ============ -->
+  <section class="panel stack" id="tab-log" hidden>
+    <div class="toolbar">
+      <div class="row">
+        <label class="f" style="flex:0 1 200px">Период<select id="l-month"></select></label>
+        <label class="f" style="flex:0 1 200px">Машина<select id="l-vehicle"></select></label>
+      </div>
+      <div class="row">
+        <button class="btn" id="exp-xlsx">Скачать Excel</button>
+        <button class="btn" id="exp-csv">CSV</button>
+      </div>
+    </div>
+    <div class="kpis" id="l-kpis"></div>
+    <div class="tablewrap"><table id="l-table"></table></div>
+    <div class="card stack">
+      <h3 style="margin:0">Резервная копия</h3>
+      <p class="note" style="margin:0">Журнал, машины и адреса хранятся только в этом браузере. Раз в неделю-две сохраняйте резервную копию: с её помощью данные можно перенести на другой компьютер или восстановить после очистки браузера.</p>
+      <div class="row">
+        <button class="btn" id="backup-save">Сохранить копию (.json)</button>
+        <label class="btn" for="backup-load" style="display:inline-block">Восстановить из копии…</label>
+        <input type="file" id="backup-load" accept=".json,application/json" hidden>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ МАШИНЫ И АДРЕСА ============ -->
+  <section class="panel stack" id="tab-cars" hidden>
+    <div class="toolbar">
+      <p class="sub" style="margin:0;max-width:65ch">Расход и амортизация задаются для каждой марки отдельно. Добавьте несколько вариантов, чтобы сравнить кандидатов. Изменения применяются к новым расчётам; сохранённые рейсы не пересчитываются.</p>
+      <button class="btn primary" id="add-car">+ Машина</button>
+    </div>
+    <div class="vehicles" id="cars"></div>
+    <div class="card stack">
+      <h2 style="margin:0">Сохранённые адреса</h2>
+      <p class="sub" style="margin:0">Адреса из сохранённых рейсов появляются здесь и первыми подсказываются при вводе. Точка с названием «Склад» подставляется автоматически.</p>
+      <div class="tablewrap"><table class="places" id="places"></table></div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   НАСТРОЙКИ КАРТЫ
+   Бесплатные сервисы на данных OpenStreetMap, без ключей.
+   Публичные серверы рассчитаны на небольшую нагрузку — для пары десятков
+   рейсов в день достаточно. Если понадобится больше, замените адреса
+   на OpenRouteService / GraphHopper / Google (см. README).
+   ===================================================================== */
+const MAP = {
+  center:[46.4825, 30.7233], zoom:11,                     // Одесса
+  tiles:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  routing:"https://router.project-osrm.org/route/v1/driving/",
+  photon:"https://photon.komoot.io/api/",
+  nominatim:"https://nominatim.openstreetmap.org/"
+};
+
+/* =====================================================================
+   ХРАНИЛИЩЕ — сейчас localStorage браузера. Чтобы перейти на общую базу
+   (Google-таблица, API учётной системы), достаточно заменить этот объект.
+   ===================================================================== */
+const STORAGE_KEY = "logistika-calc.v1";
+const store = {
+  load(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; } },
+  save(data){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); return true; } catch { toast("Не удалось сохранить в браузере"); return false; } }
+};
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const today = () => new Date().toISOString().slice(0,10);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(msg){ const t = document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
+
+/* Примерные значения — заменить на реальные после выбора машины */
+function defaultVehicle(){
+  return { id:uid(), name:"Фургон (пример)", fuel:"Дизель",
+    consEmpty:9, consLoaded:11, fuelPrice:56,
+    price:900000, residual:350000, life:300000, maint:1.5 };
+}
+/* Шаблоны маршрута: точки и признак «с грузом» для участков между ними */
+const PRESETS = {
+  full:  { stops:["Склад","Поставщик","Склад","Клиент","Склад"], loaded:[false,true,true,false] },
+  direct:{ stops:["Склад","Поставщик","Клиент","Склад"],         loaded:[false,true,false] },
+  stock: { stops:["Склад","Клиент","Склад"],                     loaded:[true,false] }
+};
+const isBase = label => /^склад$/i.test(String(label||"").trim());
+function stopFor(label){
+  const s = { label, addr:"", lat:null, lon:null };
+  if (isBase(label) && state?.base) Object.assign(s, { addr:state.base.addr, lat:state.base.lat, lon:state.base.lon });
+  return s;
+}
+function draftFromPreset(name){
+  const p = PRESETS[name];
+  return { stops:p.stops.map(stopFor), legs:p.loaded.map(l => ({ km:0, loaded:l, manual:false })) };
+}
+
+let state = store.load();
+if (!state || !Array.isArray(state.vehicles) || !state.vehicles.length){
+  const v = defaultVehicle();
+  state = { vehicles:[v], activeVehicle:v.id, trips:[], places:[], base:null, draft:null };
+}
+state.trips ||= []; state.places ||= []; state.base ||= null;
+if (!state.draft || !Array.isArray(state.draft.stops)){
+  const old = state.draft || {};
+  state.draft = { ...draftFromPreset("full"), tolls:old.tolls ?? 0, driver:old.driver ?? 0, orderSum:old.orderSum ?? "" };
+}
+const persist = () => store.save(state);
+
+/* ============ РАСЧЁТ ============ */
+const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
+const amortPerKm = v => num(v.life) > 0 ? Math.max(0, num(v.price) - num(v.residual)) / num(v.life) : 0;
+
+function calcTrip(v, legs, tolls, driver){
+  let kmLoaded = 0, kmEmpty = 0;
+  for (const l of legs){ const k = Math.max(0, num(l.km)); l.loaded ? kmLoaded += k : kmEmpty += k; }
+  const km = kmLoaded + kmEmpty;
+  const liters = kmLoaded * num(v.consLoaded) / 100 + kmEmpty * num(v.consEmpty) / 100;
+  const fuelCost = liters * num(v.fuelPrice);
+  const aPerKm = amortPerKm(v);
+  const amortCost = km * aPerKm;
+  const maintCost = km * num(v.maint);
+  const extraCost = num(tolls) + num(driver);
+  const total = fuelCost + amortCost + maintCost + extraCost;
+  return { km, kmLoaded, kmEmpty, liters, fuelPrice:num(v.fuelPrice), fuelCost,
+           amortPerKm:aPerKm, amortCost, maintPerKm:num(v.maint), maintCost,
+           tolls:num(tolls), driver:num(driver), extraCost, total, perKm: km ? total/km : 0 };
+}
+
+/* ============ ФОРМАТ ============ */
+const fmt0 = new Intl.NumberFormat("uk-UA",{maximumFractionDigits:0});
+const fmt1 = new Intl.NumberFormat("uk-UA",{maximumFractionDigits:1});
+const fmt2 = new Intl.NumberFormat("uk-UA",{minimumFractionDigits:2,maximumFractionDigits:2});
+const uah = n => fmt0.format(Math.round(n)) + " грн";
+const vehicleById = id => state.vehicles.find(v => v.id === id) || state.vehicles[0];
+const activeVehicle = () => vehicleById(state.activeVehicle);
+const hasCoords = s => s && isFinite(s.lat) && isFinite(s.lon) && s.lat !== null && s.lon !== null;
+
+/* ============ ГЕОКОДИРОВАНИЕ ============ */
+function photonLabel(p){
+  const street = [p.street, p.housenumber].filter(Boolean).join(", ");
+  const place = p.city || p.town || p.village || p.locality || p.district || p.county || "";
+  const main = p.name && p.name !== p.street ? (street ? `${p.name}, ${street}` : p.name) : (street || p.name || "");
+  return { main: main || place, sub: [main ? place : "", p.state].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(", ") };
+}
+async function geocode(q, signal){
+  const m = q.match(/^\s*(-?\d{1,2}[.,]\d+)\s*[,; ]\s*(-?\d{1,3}[.,]\d+)\s*$/);   // «46.48, 30.72»
+  if (m){ const lat = num(m[1]), lon = num(m[2]); return [{ main:`${lat.toFixed(5)}, ${lon.toFixed(5)}`, sub:"координаты", lat, lon }]; }
+  try {
+    const u = `${MAP.photon}?q=${encodeURIComponent(q)}&lat=${MAP.center[0]}&lon=${MAP.center[1]}&limit=6`;
+    const r = await fetch(u, { signal }); if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const all = d.features || [], ua = all.filter(f => f.properties.countrycode === "UA");
+    const res = (ua.length ? ua : all)
+      .map(f => ({ ...photonLabel(f.properties), lon:f.geometry.coordinates[0], lat:f.geometry.coordinates[1] }));
+    if (res.length) return res;
+  } catch(e){ if (e.name === "AbortError") throw e; }
+  const u = `${MAP.nominatim}search?format=jsonv2&limit=6&countrycodes=ua&accept-language=uk&addressdetails=1&viewbox=29.5,47.2,31.5,45.9&q=${encodeURIComponent(q)}`;
+  const r = await fetch(u, { signal }); if (!r.ok) throw new Error(r.status);
+  return (await r.json()).map(x => ({ main:shortAddr(x) || x.display_name, sub:x.display_name, lat:+x.lat, lon:+x.lon }));
+}
+function shortAddr(x){
+  const a = x.address || {};
+  const street = [a.road || a.pedestrian || a.neighbourhood, a.house_number].filter(Boolean).join(", ");
+  const place = a.city || a.town || a.village || a.hamlet || a.municipality || "";
+  return [street, place].filter(Boolean).join(", ");
+}
+async function reverseGeocode(lat, lon){
+  try {
+    const r = await fetch(`${MAP.nominatim}reverse?format=jsonv2&accept-language=uk&zoom=18&lat=${lat}&lon=${lon}`);
+    if (!r.ok) throw 0;
+    const x = await r.json();
+    return shortAddr(x) || x.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  } catch { return `${lat.toFixed(5)}, ${lon.toFixed(5)}`; }
+}
+
+/* ============ КАРТА ============ */
+let map = null, markers = [], routeLine = null, pickIndex = null;
+function initMap(){
+  if (!window.L){ $("#map").innerHTML = `<div class="empty">Карта не загрузилась — проверьте интернет. Километраж можно ввести вручную.</div>`; return; }
+  map = L.map("map", { zoomControl:true }).setView(MAP.center, MAP.zoom);
+  L.tileLayer(MAP.tiles, { maxZoom:19, attribution:MAP.attribution }).addTo(map);
+  map.on("click", async e => {
+    let i = pickIndex;
+    if (i === null) i = state.draft.stops.findIndex(s => !hasCoords(s));
+    if (i < 0){ toast("Нажмите «На карте» у нужной точки, чтобы её переставить"); return; }
+    setPick(null);
+    await placeStop(i, e.latlng.lat, e.latlng.lng, null);
+  });
+}
+function pinIcon(n, base){ return L.divIcon({ className:"", html:`<div class="pinicon ${base?"base":""}"><span>${n}</span></div>`, iconSize:[0,0], iconAnchor:[0,0] }); }
+function drawMarkers(){
+  if (!map) return;
+  markers.forEach(m => m.remove()); markers = [];
+  // одинаковые координаты (склад в начале и в конце) — одна метка с несколькими номерами
+  const groups = new Map();
+  state.draft.stops.forEach((s,i) => { if (!hasCoords(s)) return; const k = s.lat.toFixed(5)+","+s.lon.toFixed(5); (groups.get(k) || groups.set(k, []).get(k)).push(i); });
+  for (const idx of groups.values()){
+    const s = state.draft.stops[idx[0]];
+    const m = L.marker([s.lat, s.lon], { draggable:true, icon:pinIcon(idx.map(i=>i+1).join(","), isBase(s.label)), title:`${s.label}: ${s.addr}` }).addTo(map);
+    m.bindTooltip(`${esc(s.label)}<br>${esc(s.addr)}`);
+    m.on("dragend", async () => { const p = m.getLatLng(); for (const i of idx) await placeStop(i, p.lat, p.lng, null, true); renderRoute(); drawMarkers(); scheduleRouting(); });
+    markers.push(m);
+  }
+}
+function fitAll(){
+  if (!map) return;
+  const pts = state.draft.stops.filter(hasCoords).map(s => [s.lat, s.lon]);
+  if (routeLine) map.fitBounds(routeLine.getBounds(), { padding:[30,30] });
+  else if (pts.length > 1) map.fitBounds(pts, { padding:[30,30] });
+  else if (pts.length === 1) map.setView(pts[0], 14);
+}
+function setPick(i){
+  pickIndex = i;
+  $("#map")?.classList.toggle("picking", i !== null);
+  document.querySelectorAll("[data-pick]").forEach(b => b.classList.toggle("on", +b.dataset.pick === i));
+  $("#map-hint").textContent = i !== null ? `Кликните по карте, чтобы поставить точку ${i+1} «${state.draft.stops[i].label}».` : "Найдите адрес в поле точки или нажмите «На карте» и кликните по карте. Метки можно перетаскивать.";
+}
+
+/* Поставить точку: из подсказки (addr известен) или с карты (addr ищем по координатам) */
+async function placeStop(i, lat, lon, addr, silent){
+  const s = state.draft.stops[i]; if (!s) return;
+  s.lat = lat; s.lon = lon; s.addr = addr || "…";
+  if (!silent) { renderRoute(); drawMarkers(); }
+  if (!addr){ s.addr = await reverseGeocode(lat, lon); }
+  if (isBase(s.label)) state.base = { addr:s.addr, lat:s.lat, lon:s.lon };
+  persist();
+  if (!silent){ renderRoute(); drawMarkers(); scheduleRouting(); }
+}
+
+/* ============ МАРШРУТ (OSRM) ============ */
+let routeTimer = null, routeAbort = null;
+function scheduleRouting(){ clearTimeout(routeTimer); routeTimer = setTimeout(buildRoute, 350); }
+function setStatus(text, cls){ const el = $("#route-status"); el.textContent = text; el.className = "status " + (cls||""); }
+async function buildRoute(){
+  const stops = state.draft.stops;
+  if (routeLine){ routeLine.remove(); routeLine = null; }
+  const missing = stops.map((s,i)=>hasCoords(s)?null:i+1).filter(Boolean);
+  if (stops.length < 2){ setStatus("Добавьте минимум две точки."); return; }
+  if (missing.length){ setStatus(`Не указан адрес точки ${missing.join(", ")}. Пока можно ввести километры вручную.`); fitAll(); return; }
+  routeAbort?.abort(); routeAbort = new AbortController();
+  setStatus("Строю маршрут…");
+  try {
+    const coords = stops.map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
+    const r = await fetch(`${MAP.routing}${coords}?overview=full&geometries=geojson`, { signal:routeAbort.signal });
+    const d = await r.json();
+    if (d.code !== "Ok" || !d.routes?.length) throw new Error(d.message || d.code);
+    const rt = d.routes[0];
+    rt.legs.forEach((lg,i) => { const leg = state.draft.legs[i]; if (leg && !leg.manual) leg.auto = leg.km = Math.round(lg.distance/100)/10; else if (leg) leg.auto = Math.round(lg.distance/100)/10; });
+    persist();
+    if (map){
+      routeLine = L.geoJSON(rt.geometry, { style:{ color:getComputedStyle(document.documentElement).getPropertyValue("--route").trim() || "#2563c9", weight:5, opacity:.8 } }).addTo(map);
+      fitAll();
+    }
+    const h = Math.floor(rt.duration/3600), m = Math.round(rt.duration%3600/60);
+    setStatus(`Маршрут по дорогам: ${fmt1.format(rt.distance/1000)} км · в пути около ${h ? h+" ч " : ""}${m} мин.`, "ok");
+    renderRoute(); renderResult();
+  } catch(e){
+    if (e.name === "AbortError") return;
+    setStatus("Не удалось построить маршрут (сервис недоступен). Введите километры вручную или попробуйте позже.", "err");
+  }
+}
+
+/* ============ СПИСОК ТОЧЕК ============ */
+function renderRoute(){
+  const { stops, legs } = state.draft;
+  const html = [];
+  stops.forEach((s,i) => {
+    html.push(`<div class="stop" data-i="${i}">
+      <div class="num ${hasCoords(s)?"ok":""}" title="${hasCoords(s)?"точка на карте":"адрес не найден на карте"}">${i+1}</div>
+      <input type="text" class="role" data-k="label" value="${esc(s.label)}" aria-label="Что за точка" placeholder="Склад / Клиент">
+      <div class="addrbox"><input type="text" class="addr" data-k="addr" value="${esc(s.addr)}" placeholder="Адрес: улица, дом, город" autocomplete="off" aria-label="Адрес точки ${i+1}"><div class="sugg" hidden></div></div>
+      <button class="btn small" data-pick="${i}" type="button" title="Указать точку кликом по карте">На карте</button>
+      <button class="btn ghost" data-delstop="${i}" type="button" aria-label="Удалить точку" title="Удалить точку" ${stops.length<=2?"disabled":""}>✕</button>
+    </div>`);
+    if (i < legs.length){
+      const l = legs[i];
+      const src = l.manual
+        ? `вручную${l.auto ? ` · по карте ${fmt1.format(l.auto)} км <button type="button" data-auto="${i}">вернуть</button>` : ""}`
+        : (hasCoords(s) && hasCoords(stops[i+1]) ? "по карте" : "");
+      html.push(`<div class="leg ${l.loaded?"loaded":""}" data-leg="${i}">
+        <input type="number" min="0" step="0.1" data-k="km" value="${l.km || 0}" aria-label="Километров на участке ${i+1}–${i+2}"> км
+        <label class="chk"><input type="checkbox" data-k="loaded" ${l.loaded?"checked":""}>с грузом</label>
+        <span class="src">${src}</span></div>`);
+    }
+  });
+  $("#route").innerHTML = html.join("");
+  if (pickIndex !== null) setPick(pickIndex < stops.length ? pickIndex : null);
+}
+
+/* ввод в полях точек и участков */
+let suggTimer = null, suggAbort = null;
+$("#route").addEventListener("input", e => {
+  const t = e.target, k = t.dataset.k;
+  const stopEl = t.closest(".stop"), legEl = t.closest(".leg");
+  if (stopEl){
+    const s = state.draft.stops[+stopEl.dataset.i];
+    if (k === "label"){ s.label = t.value; persist(); drawMarkers(); return; }
+    if (k === "addr"){ s.addr = t.value; s.lat = s.lon = null; stopEl.querySelector(".num").classList.remove("ok"); persist(); suggest(t, +stopEl.dataset.i); }
+  }
+  if (legEl){
+    const l = state.draft.legs[+legEl.dataset.leg];
+    if (k === "km"){ l.km = t.value; l.manual = true; persist(); renderResult(); }
+    if (k === "loaded"){ l.loaded = t.checked; legEl.classList.toggle("loaded", l.loaded); persist(); renderResult(); }
+  }
+});
+$("#route").addEventListener("change", e => { if (e.target.dataset.k === "km") renderRoute(); if (e.target.dataset.k === "addr") scheduleRouting(); });
+$("#route").addEventListener("click", e => {
+  const pick = e.target.closest("[data-pick]"), del = e.target.closest("[data-delstop]"), auto = e.target.closest("[data-auto]"), sg = e.target.closest("[data-sugg]");
+  if (pick){ const i = +pick.dataset.pick; setPick(pickIndex === i ? null : i); }
+  if (del){ removeStop(+del.dataset.delstop); }
+  if (auto){ const l = state.draft.legs[+auto.dataset.auto]; l.manual = false; l.km = l.auto; persist(); renderRoute(); renderResult(); }
+  if (sg){ const i = +sg.closest(".stop").dataset.i, r = suggResults[+sg.dataset.sugg]; if (r) placeStop(i, r.lat, r.lon, r.main); }
+});
+$("#route").addEventListener("mousedown", e => { if (e.target.closest(".sugg")) e.preventDefault(); });
+$("#route").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.dataset.k === "addr"){
+    e.preventDefault(); const i = +e.target.closest(".stop").dataset.i;
+    if (suggResults[0]) placeStop(i, suggResults[0].lat, suggResults[0].lon, suggResults[0].main);
+  }
+  if (e.key === "Escape") document.querySelectorAll(".sugg").forEach(s => s.hidden = true);
+});
+$("#route").addEventListener("focusout", e => { if (e.target.dataset.k === "addr") setTimeout(() => { const box = e.target.parentElement?.querySelector(".sugg"); if (box && !box.contains(document.activeElement)) box.hidden = true; }, 200); });
+
+let suggResults = [];
+function suggest(input, i){
+  const box = input.parentElement.querySelector(".sugg");
+  const q = input.value.trim().toLowerCase();
+  clearTimeout(suggTimer); suggAbort?.abort();
+  const saved = q.length < 1 ? [] : state.places.filter(p => (p.addr + " " + p.label).toLowerCase().includes(q)).slice(0,4)
+    .map(p => ({ main:p.addr, sub:p.label, lat:p.lat, lon:p.lon, saved:true }));
+  const show = (list, loading) => {
+    suggResults = list;
+    box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">сохранён</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
+      + (loading ? `<div class="none">Ищу…</div>` : (!list.length ? `<div class="none">Ничего не найдено. Уточните адрес или укажите точку на карте.</div>` : ""));
+    box.hidden = !q;
+  };
+  if (q.length < 3){ show(saved, false); if (!saved.length) box.hidden = true; return; }
+  show(saved, true);
+  suggTimer = setTimeout(async () => {
+    suggAbort = new AbortController();
+    try { const res = await geocode(input.value.trim(), suggAbort.signal); if (document.activeElement === input) show(saved.concat(res), false); }
+    catch(e){ if (e.name !== "AbortError") show(saved, false); }
+  }, 400);
+}
+
+function removeStop(i){
+  const { stops, legs } = state.draft;
+  if (stops.length <= 2) return;
+  stops.splice(i,1);
+  legs.splice(Math.min(i, legs.length-1), 1);
+  legs.forEach(l => { if (!l.manual) l.km = 0; });
+  setPick(null); persist(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting();
+}
+$("#add-stop").addEventListener("click", () => {
+  const { stops, legs } = state.draft;
+  stops.push({ label:"Клиент", addr:"", lat:null, lon:null });
+  legs.push({ km:0, loaded:false, manual:false });
+  persist(); renderRoute(); renderResult();
+  setTimeout(() => document.querySelector(`.stop[data-i="${stops.length-1}"] .addr`)?.focus(), 0);
+});
+document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
+  Object.assign(state.draft, draftFromPreset(b.dataset.preset));
+  setPick(null); persist(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting();
+}));
+
+/* ============ КАЛЬКУЛЯТОР ============ */
+function renderVehicleSelect(){
+  $("#c-vehicle").innerHTML = state.vehicles.map(v => `<option value="${v.id}" ${v.id===state.activeVehicle?"selected":""}>${esc(v.name)}</option>`).join("");
+}
+$("#c-vehicle").addEventListener("change", e => { state.activeVehicle = e.target.value; persist(); renderResult(); });
+[["#c-tolls","tolls"],["#c-driver","driver"],["#c-order-sum","orderSum"]].forEach(([sel,key]) => {
+  $(sel).addEventListener("input", e => { state.draft[key] = e.target.value; persist(); renderResult(); });
+});
+
+function renderResult(){
+  const v = activeVehicle();
+  const r = calcTrip(v, state.draft.legs, state.draft.tolls, state.draft.driver);
+  $("#r-total").innerHTML = `${fmt0.format(Math.round(r.total))} <small>грн</small>`;
+  $("#r-sub").textContent = r.km ? `${fmt2.format(r.perKm)} грн за км · ${fmt1.format(r.km)} км · ${v.name}` : "Укажите точки маршрута";
+  const parts = [["Топливо", r.fuelCost, "var(--sun)"],["Амортизация", r.amortCost, "var(--accent)"],["ТО и шины", r.maintCost, "var(--muted)"],["Прочее", r.extraCost, "var(--danger)"]];
+  $("#r-bar").innerHTML = r.total ? parts.filter(p=>p[1]>0).map(p => `<span title="${p[0]}" style="width:${p[1]/r.total*100}%;background:${p[2]}"></span>`).join("") : "";
+  $("#r-break").innerHTML = `
+    <dt><i style="background:var(--sun)"></i>Топливо · ${fmt1.format(r.liters)} л × ${fmt2.format(r.fuelPrice)}</dt><dd>${uah(r.fuelCost)}</dd>
+    <dt><i style="background:var(--accent)"></i>Амортизация · ${fmt2.format(r.amortPerKm)} грн/км</dt><dd>${uah(r.amortCost)}</dd>
+    <dt><i style="background:var(--muted)"></i>ТО и шины · ${fmt2.format(r.maintPerKm)} грн/км</dt><dd>${uah(r.maintCost)}</dd>
+    <dt><i style="background:var(--danger)"></i>Дороги, водитель</dt><dd>${uah(r.extraCost)}</dd>
+    <div class="sep"></div>
+    <dt>Итого</dt><dd><b>${uah(r.total)}</b></dd>`;
+  const os = num(state.draft.orderSum);
+  $("#r-chips").innerHTML = `
+    <span class="chip">с грузом <b>${fmt1.format(r.kmLoaded)}</b> км</span>
+    <span class="chip">порожняком <b>${fmt1.format(r.kmEmpty)}</b> км</span>
+    ${os > 0 ? `<span class="chip">доля в заказе <b>${fmt1.format(r.total/os*100)}%</b></span>` : ""}`;
+  const others = state.vehicles.filter(x => x.id !== v.id);
+  $("#compare-card").hidden = !others.length || !r.km;
+  $("#r-compare").innerHTML = others.map(o => {
+    const t = calcTrip(o, state.draft.legs, state.draft.tolls, state.draft.driver).total, d = t - r.total;
+    return `<dt>${esc(o.name)}</dt><dd>${uah(t)} <span class="sub">(${d>=0?"+":"−"}${fmt0.format(Math.abs(Math.round(d)))})</span></dd>`;
+  }).join("");
+}
+
+$("#s-date").value = today();
+$("#save-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = activeVehicle();
+  const { stops } = state.draft;
+  const legs = state.draft.legs.map((l,i) => ({ from:stops[i].label, to:stops[i+1].label, km:num(l.km), loaded:!!l.loaded, manual:!!l.manual }));
+  const r = calcTrip(v, legs, state.draft.tolls, state.draft.driver);
+  if (!r.km){ toast("Нет километража — укажите точки или введите км"); return; }
+  state.trips.push({
+    id:uid(), date:$("#s-date").value || today(), createdAt:new Date().toISOString(),
+    client:$("#s-client").value.trim(), order:$("#s-order").value.trim(), note:$("#s-note").value.trim(),
+    vehicleId:v.id, vehicleName:v.name,
+    route:stops.map(s => s.label).join(" → "),
+    addresses:stops.map(s => s.addr).join(" → "),
+    stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r
+  });
+  // запомнить адреса
+  for (const s of stops) if (hasCoords(s) && s.addr){
+    const ex = state.places.find(p => p.addr === s.addr);
+    if (ex){ ex.label = s.label; ex.lat = s.lat; ex.lon = s.lon; ex.used = (ex.used||0) + 1; }
+    else state.places.push({ id:uid(), label:s.label, addr:s.addr, lat:s.lat, lon:s.lon, used:1 });
+  }
+  persist();
+  $("#s-client").value = ""; $("#s-order").value = ""; $("#s-note").value = "";
+  toast(`Рейс сохранён: ${uah(r.total)}`);
+});
+
+/* ============ ЖУРНАЛ ============ */
+const monthKey = d => (d || "").slice(0,7);
+const monthName = k => { const [y,m] = k.split("-"); return new Date(+y, +m-1, 1).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); };
+let logFilter = { month: monthKey(today()), vehicle:"all" };
+function filteredTrips(){
+  return state.trips
+    .filter(t => logFilter.month === "all" || monthKey(t.date) === logFilter.month)
+    .filter(t => logFilter.vehicle === "all" || t.vehicleId === logFilter.vehicle)
+    .sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.createdAt||"").localeCompare(a.createdAt||""));
+}
+function renderLog(){
+  const months = [...new Set(state.trips.map(t => monthKey(t.date)).concat(monthKey(today())))].sort().reverse();
+  if (logFilter.month !== "all" && !months.includes(logFilter.month)) logFilter.month = months[0];
+  $("#l-month").innerHTML = months.map(m => `<option value="${m}" ${m===logFilter.month?"selected":""}>${monthName(m)}</option>`).join("") + `<option value="all" ${logFilter.month==="all"?"selected":""}>Все время</option>`;
+  const vIds = [...new Set(state.trips.map(t => t.vehicleId))];
+  $("#l-vehicle").innerHTML = `<option value="all">Все машины</option>` + vIds.map(id => {
+    const name = state.trips.find(t=>t.vehicleId===id).vehicleName;
+    return `<option value="${id}" ${id===logFilter.vehicle?"selected":""}>${esc(name)}</option>`; }).join("");
+  const rows = filteredTrips();
+  const sum = k => rows.reduce((s,t) => s + (t[k]||0), 0);
+  const tot = sum("total"), km = sum("km");
+  $("#l-kpis").innerHTML = `
+    <div class="kpi"><span>Рейсов</span><div>${rows.length}</div></div>
+    <div class="kpi"><span>Пробег</span><div>${fmt0.format(km)} км</div></div>
+    <div class="kpi"><span>Топливо</span><div>${fmt0.format(sum("liters"))} л</div></div>
+    <div class="kpi"><span>Расходы · ${km?fmt2.format(tot/km):"0"} грн/км</span><div>${uah(tot)}</div></div>`;
+  if (!rows.length){
+    $("#l-table").innerHTML = `<tbody><tr><td class="empty">За этот период рейсов нет. Посчитайте рейс в калькуляторе и нажмите «Сохранить рейс».</td></tr></tbody>`;
+    return;
+  }
+  $("#l-table").innerHTML = `
+    <thead><tr><th>Дата</th><th>Клиент / объект</th><th>Заказ</th><th>Маршрут</th><th>Машина</th>
+      <th class="n">Км</th><th class="n">Литры</th><th class="n">Топливо</th><th class="n">Амортиз.</th><th class="n">ТО</th><th class="n">Прочее</th><th class="n">Итого</th><th></th></tr></thead>
+    <tbody>${rows.map(t => `<tr>
+      <td>${new Date(t.date).toLocaleDateString("ru-RU")}</td>
+      <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}</td>
+      <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
+      <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
+      <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
+      <td class="n">${fmt0.format(t.maintCost)}</td><td class="n">${fmt0.format(t.extraCost)}</td>
+      <td class="n"><b>${fmt0.format(t.total)}</b></td>
+      <td><button class="btn ghost" data-deltrip="${t.id}" title="Удалить рейс">✕</button></td></tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="5">Итого</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
+      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td><td class="n">${fmt0.format(sum("maintCost"))}</td>
+      <td class="n">${fmt0.format(sum("extraCost"))}</td><td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
+}
+$("#l-month").addEventListener("change", e => { logFilter.month = e.target.value; renderLog(); });
+$("#l-vehicle").addEventListener("change", e => { logFilter.vehicle = e.target.value; renderLog(); });
+function armDelete(b, label, done){
+  if (b.dataset.armed){ done(); return; }
+  const prev = b.textContent; b.dataset.armed = "1"; b.textContent = label; b.classList.add("danger");
+  setTimeout(() => { if (b.isConnected){ delete b.dataset.armed; b.textContent = prev; b.classList.remove("danger"); } }, 3000);
+}
+$("#l-table").addEventListener("click", e => {
+  const b = e.target.closest("[data-deltrip]"); if (!b) return;
+  armDelete(b, "Удалить?", () => { state.trips = state.trips.filter(t => t.id !== b.dataset.deltrip); persist(); renderLog(); toast("Рейс удалён"); });
+});
+
+/* ============ ЭКСПОРТ ============
+   Плоские строки с понятными колонками — подходят для импорта
+   в любую учётную систему (1С/BAS, Dilovod, Odoo и т. п.). */
+const round = (n,d) => Math.round((n||0) * 10**d) / 10**d;
+function exportRows(){
+  return filteredTrips().slice().reverse().map(t => ({
+    "Дата": t.date, "Клиент/объект": t.client, "№ заказа": t.order, "Комментарий": t.note,
+    "Маршрут": t.route, "Адреса": t.addresses || "", "Машина": t.vehicleName,
+    "Км всего": round(t.km,1), "Км с грузом": round(t.kmLoaded,1), "Км порожняком": round(t.kmEmpty,1),
+    "Литры": round(t.liters,2), "Цена топлива, грн/л": round(t.fuelPrice,2), "Топливо, грн": round(t.fuelCost,2),
+    "Амортизация, грн/км": round(t.amortPerKm,3), "Амортизация, грн": round(t.amortCost,2),
+    "ТО и шины, грн": round(t.maintCost,2), "Дороги/парковка, грн": round(t.tolls,2), "Водитель, грн": round(t.driver,2),
+    "Итого, грн": round(t.total,2), "Грн/км": round(t.perKm,2), "Сумма заказа, грн": t.orderSum ?? "", "ID рейса": t.id
+  }));
+}
+const fileTag = () => logFilter.month === "all" ? "vse" : logFilter.month;
+function download(name, blob){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+$("#exp-xlsx").addEventListener("click", () => {
+  const rows = exportRows(); if (!rows.length) return toast("Нет рейсов за этот период");
+  if (!window.XLSX) return toast("Excel-модуль не загрузился — используйте CSV");
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = Object.keys(rows[0]).map(k => ({ wch: Math.max(10, k.length + 2) }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Рейсы");
+  XLSX.writeFile(wb, `reisy-${fileTag()}.xlsx`);
+});
+$("#exp-csv").addEventListener("click", () => {
+  const rows = exportRows(); if (!rows.length) return toast("Нет рейсов за этот период");
+  const cols = Object.keys(rows[0]);
+  const cell = v => { const s = typeof v === "number" ? String(v).replace(".", ",") : String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const csv = "﻿" + [cols.join(";")].concat(rows.map(r => cols.map(c => cell(r[c])).join(";"))).join("\r\n");
+  download(`reisy-${fileTag()}.csv`, new Blob([csv], { type:"text/csv;charset=utf-8" }));
+});
+$("#backup-save").addEventListener("click", () => {
+  download(`logistika-backup-${today()}.json`, new Blob([JSON.stringify({ app:"logistika-calc", version:2, savedAt:new Date().toISOString(), ...state }, null, 2)], { type:"application/json" }));
+});
+$("#backup-load").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.vehicles) || !Array.isArray(d.trips)) throw 0;
+    state = { vehicles:d.vehicles, activeVehicle:d.activeVehicle, trips:d.trips, places:d.places || [], base:d.base || null,
+              draft:Array.isArray(d.draft?.stops) ? d.draft : state.draft };
+    persist(); renderAll(); toast(`Восстановлено: ${d.trips.length} рейсов, ${d.vehicles.length} машин`);
+  } catch { toast("Файл не похож на резервную копию этого калькулятора"); }
+  e.target.value = "";
+});
+
+/* ============ МАШИНЫ ============ */
+const CAR_FIELDS = [
+  ["name","Марка и модель","text"],["fuel","Топливо","text"],
+  ["consLoaded","Расход с грузом, л/100 км","number"],["consEmpty","Расход порожняком, л/100 км","number"],
+  ["fuelPrice","Цена топлива, грн/л","number"],["maint","ТО, шины, ремонт, грн/км","number"],
+  ["price","Цена покупки, грн","number"],["residual","Стоимость при продаже, грн","number"],
+  ["life","Пробег за срок владения, км","number"]
+];
+function renderCars(){
+  $("#cars").innerHTML = state.vehicles.map(v => `
+    <div class="card stack vehicle ${v.id===state.activeVehicle?"active":""}" data-id="${v.id}">
+      <div class="toolbar">
+        <h2 style="margin:0">${esc(v.name)}</h2>
+        ${v.id===state.activeVehicle ? `<span class="badge">в калькуляторе</span>` : `<button class="btn small" data-use="${v.id}">Использовать</button>`}
+      </div>
+      <div class="row">${CAR_FIELDS.map(([k,l,t]) => `<label class="f">${l}<input type="${t}" data-k="${k}" ${t==="number"?'min="0" step="any"':""} value="${esc(v[k])}"></label>`).join("")}</div>
+      <div class="derived" data-derived></div>
+      <div class="toolbar"><span></span>${state.vehicles.length > 1 ? `<button class="btn small danger" data-delcar="${v.id}">Удалить машину</button>` : ""}</div>
+    </div>`).join("");
+  document.querySelectorAll(".vehicle").forEach(updateDerived);
+  renderPlaces();
+}
+function updateDerived(card){
+  const v = vehicleById(card.dataset.id);
+  const fuelKm = num(v.consLoaded)*num(v.fuelPrice)/100;
+  card.querySelector("[data-derived]").innerHTML =
+    `<span>Амортизация <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
+     <span>Топливо с грузом <b>${fmt2.format(fuelKm)}</b> грн/км</span>
+     <span>Всего с грузом <b>${fmt2.format(fuelKm + amortPerKm(v) + num(v.maint))}</b> грн/км</span>`;
+}
+$("#cars").addEventListener("input", e => {
+  const card = e.target.closest(".vehicle"); if (!card) return;
+  const v = vehicleById(card.dataset.id), k = e.target.dataset.k;
+  v[k] = e.target.value;
+  if (k === "name") card.querySelector("h2").textContent = v.name;
+  persist(); updateDerived(card);
+});
+$("#cars").addEventListener("click", e => {
+  const use = e.target.closest("[data-use]"), del = e.target.closest("[data-delcar]");
+  if (use){ state.activeVehicle = use.dataset.use; persist(); renderCars(); }
+  if (del) armDelete(del, "Точно удалить?", () => {
+    state.vehicles = state.vehicles.filter(v => v.id !== del.dataset.delcar);
+    if (!state.vehicles.some(v => v.id === state.activeVehicle)) state.activeVehicle = state.vehicles[0].id;
+    persist(); renderCars();
+  });
+});
+$("#add-car").addEventListener("click", () => {
+  state.vehicles.push({ ...defaultVehicle(), name:`Машина ${state.vehicles.length + 1}` }); persist(); renderCars();
+});
+
+/* ============ АДРЕСА ============ */
+function renderPlaces(){
+  const rows = [];
+  if (state.base) rows.push(`<tr><td><b>Склад</b> <span class="sub">(подставляется в шаблоны)</span></td><td>${esc(state.base.addr)}</td><td></td></tr>`);
+  state.places.slice().sort((a,b) => (b.used||0)-(a.used||0)).forEach(p =>
+    rows.push(`<tr><td>${esc(p.label)}</td><td>${esc(p.addr)}</td><td><button class="btn ghost" data-delplace="${p.id}" title="Удалить адрес">✕</button></td></tr>`));
+  $("#places").innerHTML = rows.length
+    ? `<thead><tr><th>Точка</th><th>Адрес</th><th></th></tr></thead><tbody>${rows.join("")}</tbody>`
+    : `<tbody><tr><td class="empty">Пока пусто. Укажите адрес склада в калькуляторе (точка «Склад») — он запомнится.</td></tr></tbody>`;
+}
+$("#places").addEventListener("click", e => {
+  const b = e.target.closest("[data-delplace]"); if (!b) return;
+  armDelete(b, "Удалить?", () => { state.places = state.places.filter(p => p.id !== b.dataset.delplace); persist(); renderPlaces(); });
+});
+
+/* ============ ВКЛАДКИ ============ */
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+function showTab(name){
+  document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll("section.panel").forEach(s => s.hidden = s.id !== "tab-" + name);
+  if (name === "log") renderLog();
+  if (name === "cars") renderCars();
+  if (name === "calc"){ renderVehicleSelect(); renderResult(); if (map) setTimeout(() => { map.invalidateSize(); fitAll(); }, 0); }
+  try { localStorage.setItem(STORAGE_KEY + ".tab", name); } catch {}
+}
+
+/* ============ СТАРТ ============ */
+function renderAll(){
+  renderVehicleSelect(); renderRoute(); drawMarkers(); renderResult(); renderLog(); renderCars();
+  [["#c-tolls","tolls"],["#c-driver","driver"],["#c-order-sum","orderSum"]].forEach(([s,k]) => $(s).value = state.draft[k] ?? "");
+  scheduleRouting();
+}
+initMap();
+renderAll();
+let startTab = "calc"; try { startTab = localStorage.getItem(STORAGE_KEY + ".tab") || "calc"; } catch {}
+showTab(startTab);
+</script>
+</body>
+</html>
