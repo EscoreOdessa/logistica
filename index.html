@@ -395,6 +395,9 @@ for (const v of state.vehicles){
   for (const k of ["consLoaded","consEmpty","maint","fuelPrice","price","residual","life"]) delete v[k];
 }
 state.sheet ||= { url:"", key:"" };
+if (state.baseLocked === undefined) state.baseLocked = false;
+/* підставити зафіксований склад у точку */
+function fillBase(stop){ if (!state.base || !hasCoords(state.base)) return false; Object.assign(stop, { addr:state.base.addr, lat:state.base.lat, lon:state.base.lon, approx:false }); return true; }
 const persist = () => store.save(state);
 
 /* ============ РАСЧЁТ ============ */
@@ -538,8 +541,9 @@ async function placeStop(i, lat, lon, addr, silent, approx){
   if (!silent) { renderRoute(); drawMarkers(); }
   if (!addr && !keepText){ s.addr = await reverseGeocode(lat, lon); }
   if (approx && !silent){ setPick(i); toast("Будинок не знайдено на карті — клацніть точне місце на карті або перетягніть мітку"); }
-  if (isBase(s.label)){
+  if (isBase(s.label) && (!state.baseLocked || !state.base)){
     state.base = { addr:s.addr, lat:s.lat, lon:s.lon };
+    if (!s.approx){ state.baseLocked = true; if (!silent) toast(`Адресу складу зафіксовано: ${s.addr}`); }
     state.draft.stops.forEach(o => { if (o !== s && isBase(o.label) && !hasCoords(o) && !o.addr) Object.assign(o, state.base); });
   }
   persist();
@@ -613,7 +617,15 @@ $("#route").addEventListener("input", e => {
   const stopEl = t.closest(".stop"), legEl = t.closest(".leg");
   if (stopEl){
     const s = state.draft.stops[+stopEl.dataset.i];
-    if (k === "label"){ s.label = t.value; persist(); drawMarkers(); return; }
+    if (k === "label"){
+      s.label = t.value;
+      if (isBase(s.label) && !hasCoords(s) && fillBase(s)){ persist(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting(); return; }
+      persist(); drawMarkers(); return;
+    }
+    if (k === "addr" && isBase(t.value) && state.base && hasCoords(state.base)){
+      if (!s.label || /^клієнт$|^точка/i.test(s.label.trim())) s.label = "Склад";
+      fillBase(s); persist(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting(); return;
+    }
     if (k === "addr"){
       const i = +stopEl.dataset.i;
       s.addr = t.value; s.lat = s.lon = null; s.approx = false; stopEl.querySelector(".num").classList.remove("ok");
@@ -650,8 +662,10 @@ function suggest(input, i){
   const box = input.parentElement.querySelector(".sugg");
   const q = input.value.trim().toLowerCase();
   clearTimeout(suggTimer); suggAbort?.abort();
-  const saved = q.length < 1 ? [] : state.places.filter(p => (p.addr + " " + p.label).toLowerCase().includes(q)).slice(0,4)
-    .map(p => ({ main:p.addr, sub:p.label, lat:p.lat, lon:p.lon, saved:true }));
+  const baseHit = state.base && hasCoords(state.base) && q && ("склад".startsWith(q) || state.base.addr.toLowerCase().includes(q))
+    ? [{ main:state.base.addr, sub:"Склад", lat:state.base.lat, lon:state.base.lon, saved:true }] : [];
+  const saved = q.length < 1 ? [] : baseHit.concat(state.places.filter(p => p.addr !== state.base?.addr && (p.addr + " " + p.label).toLowerCase().includes(q)).slice(0,4)
+    .map(p => ({ main:p.addr, sub:p.label, lat:p.lat, lon:p.lon, saved:true })));
   const show = (list, loading) => {
     suggResults = list;
     box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">збережено</span>`:""}${!r.saved && r.approx?`<span class="tag warn">будинок не знайдено — лише вулиця</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
@@ -1016,7 +1030,7 @@ $("#add-car").addEventListener("click", () => {
 /* ============ АДРЕСА ============ */
 function renderPlaces(){
   const rows = [];
-  if (state.base) rows.push(`<tr><td><b>Склад</b> <span class="sub">(підставляється в шаблони)</span></td><td>${esc(state.base.addr)}</td><td></td></tr>`);
+  if (state.base) rows.push(`<tr><td><b>Склад</b> <span class="sub">${state.baseLocked ? "(зафіксовано — підставляється, коли пишете «Склад»)" : "(ще не зафіксовано — поставте точку «Склад» на карті)"}</span></td><td>${esc(state.base.addr)}</td><td>${state.baseLocked ? `<button class="btn small" data-unlockbase type="button">Змінити</button>` : ""}</td></tr>`);
   state.places.slice().sort((a,b) => (b.used||0)-(a.used||0)).forEach(p =>
     rows.push(`<tr><td>${esc(p.label)}</td><td>${esc(p.addr)}</td><td><button class="btn ghost" data-delplace="${p.id}" title="Видалити адресу">✕</button></td></tr>`));
   $("#places").innerHTML = rows.length
@@ -1024,6 +1038,7 @@ function renderPlaces(){
     : `<tbody><tr><td class="empty">Поки що порожньо. Вкажіть адресу складу в калькуляторі (точка «Склад») — вона запам'ятається.</td></tr></tbody>`;
 }
 $("#places").addEventListener("click", e => {
+  if (e.target.closest("[data-unlockbase]")){ state.baseLocked = false; persist(); renderPlaces(); toast("Поставте точку «Склад» у калькуляторі точно на карті — нова адреса зафіксується"); return; }
   const b = e.target.closest("[data-delplace]"); if (!b) return;
   armDelete(b, "Видалити?", () => { state.places = state.places.filter(p => p.id !== b.dataset.delplace); persist(); renderPlaces(); });
 });
