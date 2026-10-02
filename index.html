@@ -97,6 +97,12 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);padding:0
   .stop .role{grid-column:2/-1}
   .stop .addrbox{grid-column:1/3}
 }
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg button{font:inherit;font-size:14px;border:0;background:transparent;color:var(--fg);padding:6px 14px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+.fuelpick{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.fuelrow{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}
+@media (max-width:560px){.fuelrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.fuelrow .fuelpick{grid-column:1/-1}}
 .legend{font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 /* итог */
@@ -166,27 +172,21 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
               <button class="btn small" data-preset="stock">Со склада клиенту</button>
             </div>
           </div>
+          <div class="fuelrow">
+            <div class="f fuelpick">Вид топлива<div class="seg" id="c-fuel" role="group" aria-label="Вид топлива"><button type="button" data-fuel="Бензин" aria-pressed="false">Бензин</button><button type="button" data-fuel="Дизель" aria-pressed="false">Дизель</button></div></div>
+            <label class="f">Расход, л/100 км<input type="number" id="c-cons" min="0" step="0.1"></label>
+            <label class="f">Цена, грн/л<input type="number" id="c-price" min="0" step="0.01"></label>
+          </div>
           <div>
             <div id="map" role="application" aria-label="Карта маршрута"></div>
             <div class="maphint"><span id="map-hint">Найдите адрес в поле точки или нажмите «На карте» и кликните по карте. Метки можно перетаскивать.</span></div>
           </div>
           <div class="route" id="route"></div>
           <div class="toolbar">
-            <div class="legend"><span><i style="background:var(--sun)"></i>с грузом</span><span><i style="background:var(--line)"></i>порожняком</span></div>
+            <span></span>
             <button class="btn small" id="add-stop">+ Точка</button>
           </div>
           <div class="status" id="route-status">Укажите адреса всех точек — километраж посчитается автоматически.</div>
-        </div>
-
-        <div class="card stack">
-          <h2 style="margin:0">Дополнительно за рейс</h2>
-          <div class="row">
-            <label class="f">Платные дороги, парковка, грн<input type="number" id="c-tolls" min="0" step="10" value="0"></label>
-            <label class="f">Водитель / суточные, грн<input type="number" id="c-driver" min="0" step="50" value="0"></label>
-          </div>
-          <div class="row">
-            <label class="f">Сумма заказа, грн <span class="hint">необязательно, для доли логистики</span><input type="number" id="c-order-sum" min="0" step="1000" value=""></label>
-          </div>
         </div>
       </div>
 
@@ -213,6 +213,7 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
           </div>
           <label class="f">Клиент / объект<input type="text" id="s-client" placeholder="напр. Петренко, СЭС 10 кВт, Черноморск"></label>
           <label class="f">Комментарий<input type="text" id="s-note" placeholder="что везли"></label>
+          <label class="f">Сумма заказа, грн <span class="hint">необязательно — покажет долю доставки в заказе</span><input type="number" id="c-order-sum" min="0" step="1000"></label>
           <button class="btn primary" type="submit">Сохранить рейс</button>
         </form>
       </div>
@@ -298,8 +299,7 @@ function toast(msg){ const t = document.createElement("div"); t.className="toast
 /* Примерные значения — заменить на реальные после выбора машины */
 function defaultVehicle(){
   return { id:uid(), name:"Фургон (пример)", fuel:"Дизель",
-    consEmpty:9, consLoaded:11, fuelPrice:56,
-    price:900000, residual:350000, life:300000, maint:1.5 };
+    cons:10, price:900000, residual:350000, life:300000 };
 }
 /* Шаблоны маршрута: точки и признак «с грузом» для участков между ними */
 const PRESETS = {
@@ -315,7 +315,7 @@ function stopFor(label){
 }
 function draftFromPreset(name){
   const p = PRESETS[name];
-  return { stops:p.stops.map(stopFor), legs:p.loaded.map(l => ({ km:0, loaded:l, manual:false })) };
+  return { stops:p.stops.map(stopFor), legs:p.loaded.map(() => ({ km:0, manual:false })) };
 }
 
 let state = store.load();
@@ -326,7 +326,15 @@ if (!state || !Array.isArray(state.vehicles) || !state.vehicles.length){
 state.trips ||= []; state.places ||= []; state.base ||= null;
 if (!state.draft || !Array.isArray(state.draft.stops)){
   const old = state.draft || {};
-  state.draft = { ...draftFromPreset("full"), tolls:old.tolls ?? 0, driver:old.driver ?? 0, orderSum:old.orderSum ?? "" };
+  state.draft = { ...draftFromPreset("full"), orderSum:old.orderSum ?? "" };
+}
+/* Цены на топливо — общие для всех машин (примерные, поменяйте на актуальные) */
+const FUELS = ["Бензин","Дизель"];
+state.fuelPrices ||= { "Бензин":58, "Дизель":55 };
+for (const v of state.vehicles){
+  if (v.cons === undefined) v.cons = v.consLoaded ?? 10;
+  if (!FUELS.includes(v.fuel)) v.fuel = /бенз/i.test(v.fuel || "") ? "Бензин" : "Дизель";
+  delete v.consLoaded; delete v.consEmpty; delete v.maint; delete v.fuelPrice;
 }
 const persist = () => store.save(state);
 
@@ -334,20 +342,16 @@ const persist = () => store.save(state);
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
 const amortPerKm = v => num(v.life) > 0 ? Math.max(0, num(v.price) - num(v.residual)) / num(v.life) : 0;
 
-function calcTrip(v, legs, tolls, driver){
-  let kmLoaded = 0, kmEmpty = 0;
-  for (const l of legs){ const k = Math.max(0, num(l.km)); l.loaded ? kmLoaded += k : kmEmpty += k; }
-  const km = kmLoaded + kmEmpty;
-  const liters = kmLoaded * num(v.consLoaded) / 100 + kmEmpty * num(v.consEmpty) / 100;
-  const fuelCost = liters * num(v.fuelPrice);
+const fuelPriceOf = v => num(state.fuelPrices[v.fuel]);
+function calcTrip(v, legs){
+  const km = legs.reduce((t,l) => t + Math.max(0, num(l.km)), 0);
+  const liters = km * num(v.cons) / 100;
+  const fuelPrice = fuelPriceOf(v);
+  const fuelCost = liters * fuelPrice;
   const aPerKm = amortPerKm(v);
   const amortCost = km * aPerKm;
-  const maintCost = km * num(v.maint);
-  const extraCost = num(tolls) + num(driver);
-  const total = fuelCost + amortCost + maintCost + extraCost;
-  return { km, kmLoaded, kmEmpty, liters, fuelPrice:num(v.fuelPrice), fuelCost,
-           amortPerKm:aPerKm, amortCost, maintPerKm:num(v.maint), maintCost,
-           tolls:num(tolls), driver:num(driver), extraCost, total, perKm: km ? total/km : 0 };
+  const total = fuelCost + amortCost;
+  return { km, fuel:v.fuel, cons:num(v.cons), liters, fuelPrice, fuelCost, amortPerKm:aPerKm, amortCost, total, perKm: km ? total/km : 0 };
 }
 
 /* ============ ФОРМАТ ============ */
@@ -529,9 +533,8 @@ function renderRoute(){
       const src = l.manual
         ? `вручную${l.auto ? ` · по карте ${fmt1.format(l.auto)} км <button type="button" data-auto="${i}">вернуть</button>` : ""}`
         : (hasCoords(s) && hasCoords(stops[i+1]) ? "по карте" : "");
-      html.push(`<div class="leg ${l.loaded?"loaded":""}" data-leg="${i}">
+      html.push(`<div class="leg" data-leg="${i}">
         <input type="number" min="0" step="0.1" data-k="km" value="${l.km || 0}" aria-label="Километров на участке ${i+1}–${i+2}"> км
-        <label class="chk"><input type="checkbox" data-k="loaded" ${l.loaded?"checked":""}>с грузом</label>
         <span class="src">${src}</span></div>`);
     }
   });
@@ -552,7 +555,6 @@ $("#route").addEventListener("input", e => {
   if (legEl){
     const l = state.draft.legs[+legEl.dataset.leg];
     if (k === "km"){ l.km = t.value; l.manual = true; persist(); renderResult(); }
-    if (k === "loaded"){ l.loaded = t.checked; legEl.classList.toggle("loaded", l.loaded); persist(); renderResult(); }
   }
 });
 $("#route").addEventListener("change", e => { if (e.target.dataset.k === "km") renderRoute(); if (e.target.dataset.k === "addr") scheduleRouting(); });
@@ -606,7 +608,7 @@ function removeStop(i){
 $("#add-stop").addEventListener("click", () => {
   const { stops, legs } = state.draft;
   stops.push({ label:"Клиент", addr:"", lat:null, lon:null });
-  legs.push({ km:0, loaded:false, manual:false });
+  legs.push({ km:0, manual:false });
   persist(); renderRoute(); renderResult();
   setTimeout(() => document.querySelector(`.stop[data-i="${stops.length-1}"] .addr`)?.focus(), 0);
 });
@@ -619,34 +621,38 @@ document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("clic
 function renderVehicleSelect(){
   $("#c-vehicle").innerHTML = state.vehicles.map(v => `<option value="${v.id}" ${v.id===state.activeVehicle?"selected":""}>${esc(v.name)}</option>`).join("");
 }
-$("#c-vehicle").addEventListener("change", e => { state.activeVehicle = e.target.value; persist(); renderResult(); });
-[["#c-tolls","tolls"],["#c-driver","driver"],["#c-order-sum","orderSum"]].forEach(([sel,key]) => {
-  $(sel).addEventListener("input", e => { state.draft[key] = e.target.value; persist(); renderResult(); });
-});
+$("#c-vehicle").addEventListener("change", e => { state.activeVehicle = e.target.value; persist(); renderFuel(); renderResult(); });
+$("#c-order-sum").addEventListener("input", e => { state.draft.orderSum = e.target.value; persist(); renderResult(); });
+/* топливо: вид, расход, цена — пишутся в выбранную машину */
+function renderFuel(){
+  const v = activeVehicle();
+  document.querySelectorAll("#c-fuel [data-fuel]").forEach(b => b.setAttribute("aria-pressed", b.dataset.fuel === v.fuel));
+  if (document.activeElement !== $("#c-cons")) $("#c-cons").value = v.cons ?? "";
+  if (document.activeElement !== $("#c-price")) $("#c-price").value = state.fuelPrices[v.fuel] ?? "";
+}
+$("#c-fuel").addEventListener("click", e => { const b = e.target.closest("[data-fuel]"); if (!b) return; activeVehicle().fuel = b.dataset.fuel; persist(); renderFuel(); renderResult(); });
+$("#c-cons").addEventListener("input", e => { activeVehicle().cons = e.target.value; persist(); renderResult(); });
+$("#c-price").addEventListener("input", e => { state.fuelPrices[activeVehicle().fuel] = e.target.value; persist(); renderResult(); });
 
 function renderResult(){
   const v = activeVehicle();
-  const r = calcTrip(v, state.draft.legs, state.draft.tolls, state.draft.driver);
+  const r = calcTrip(v, state.draft.legs);
   $("#r-total").innerHTML = `${fmt0.format(Math.round(r.total))} <small>грн</small>`;
   $("#r-sub").textContent = r.km ? `${fmt2.format(r.perKm)} грн за км · ${fmt1.format(r.km)} км · ${v.name}` : "Укажите точки маршрута";
-  const parts = [["Топливо", r.fuelCost, "var(--sun)"],["Амортизация", r.amortCost, "var(--accent)"],["ТО и шины", r.maintCost, "var(--muted)"],["Прочее", r.extraCost, "var(--danger)"]];
-  $("#r-bar").innerHTML = r.total ? parts.filter(p=>p[1]>0).map(p => `<span title="${p[0]}" style="width:${p[1]/r.total*100}%;background:${p[2]}"></span>`).join("") : "";
+  $("#r-bar").innerHTML = r.total ? [[r.fuelCost,"var(--sun)","Топливо"],[r.amortCost,"var(--accent)","Амортизация"]].filter(p=>p[0]>0)
+    .map(p => `<span title="${p[2]}" style="width:${p[0]/r.total*100}%;background:${p[1]}"></span>`).join("") : "";
   $("#r-break").innerHTML = `
-    <dt><i style="background:var(--sun)"></i>Топливо · ${fmt1.format(r.liters)} л × ${fmt2.format(r.fuelPrice)}</dt><dd>${uah(r.fuelCost)}</dd>
+    <dt><i style="background:var(--sun)"></i>${esc(r.fuel)} · ${fmt1.format(r.liters)} л × ${fmt2.format(r.fuelPrice)} грн</dt><dd>${uah(r.fuelCost)}</dd>
     <dt><i style="background:var(--accent)"></i>Амортизация · ${fmt2.format(r.amortPerKm)} грн/км</dt><dd>${uah(r.amortCost)}</dd>
-    <dt><i style="background:var(--muted)"></i>ТО и шины · ${fmt2.format(r.maintPerKm)} грн/км</dt><dd>${uah(r.maintCost)}</dd>
-    <dt><i style="background:var(--danger)"></i>Дороги, водитель</dt><dd>${uah(r.extraCost)}</dd>
     <div class="sep"></div>
     <dt>Итого</dt><dd><b>${uah(r.total)}</b></dd>`;
   const os = num(state.draft.orderSum);
-  $("#r-chips").innerHTML = `
-    <span class="chip">с грузом <b>${fmt1.format(r.kmLoaded)}</b> км</span>
-    <span class="chip">порожняком <b>${fmt1.format(r.kmEmpty)}</b> км</span>
-    ${os > 0 ? `<span class="chip">доля в заказе <b>${fmt1.format(r.total/os*100)}%</b></span>` : ""}`;
+  $("#r-chips").innerHTML = `<span class="chip">расход <b>${fmt1.format(r.cons)}</b> л/100 км</span>`
+    + (os > 0 ? `<span class="chip">доля в заказе <b>${fmt1.format(r.total/os*100)}%</b></span>` : "");
   const others = state.vehicles.filter(x => x.id !== v.id);
   $("#compare-card").hidden = !others.length || !r.km;
   $("#r-compare").innerHTML = others.map(o => {
-    const t = calcTrip(o, state.draft.legs, state.draft.tolls, state.draft.driver).total, d = t - r.total;
+    const t = calcTrip(o, state.draft.legs).total, d = t - r.total;
     return `<dt>${esc(o.name)}</dt><dd>${uah(t)} <span class="sub">(${d>=0?"+":"−"}${fmt0.format(Math.abs(Math.round(d)))})</span></dd>`;
   }).join("");
 }
@@ -656,8 +662,8 @@ $("#save-form").addEventListener("submit", e => {
   e.preventDefault();
   const v = activeVehicle();
   const { stops } = state.draft;
-  const legs = state.draft.legs.map((l,i) => ({ from:stops[i].label, to:stops[i+1].label, km:num(l.km), loaded:!!l.loaded, manual:!!l.manual }));
-  const r = calcTrip(v, legs, state.draft.tolls, state.draft.driver);
+  const legs = state.draft.legs.map((l,i) => ({ from:stops[i].label, to:stops[i+1].label, km:num(l.km), manual:!!l.manual }));
+  const r = calcTrip(v, legs);
   if (!r.km){ toast("Нет километража — укажите точки или введите км"); return; }
   state.trips.push({
     id:uid(), date:$("#s-date").value || today(), createdAt:new Date().toISOString(),
@@ -675,6 +681,7 @@ $("#save-form").addEventListener("submit", e => {
   }
   persist();
   $("#s-client").value = ""; $("#s-order").value = ""; $("#s-note").value = "";
+  $("#c-order-sum").value = ""; state.draft.orderSum = ""; persist(); renderResult();
   toast(`Рейс сохранён: ${uah(r.total)}`);
 });
 
@@ -710,19 +717,18 @@ function renderLog(){
   }
   $("#l-table").innerHTML = `
     <thead><tr><th>Дата</th><th>Клиент / объект</th><th>Заказ</th><th>Маршрут</th><th>Машина</th>
-      <th class="n">Км</th><th class="n">Литры</th><th class="n">Топливо</th><th class="n">Амортиз.</th><th class="n">ТО</th><th class="n">Прочее</th><th class="n">Итого</th><th></th></tr></thead>
+      <th class="n">Км</th><th class="n">Литры</th><th class="n">Топливо, грн</th><th class="n">Амортиз.</th><th class="n">Итого</th><th></th></tr></thead>
     <tbody>${rows.map(t => `<tr>
       <td>${new Date(t.date).toLocaleDateString("ru-RU")}</td>
       <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}</td>
       <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
       <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
-      <td class="n">${fmt0.format(t.maintCost)}</td><td class="n">${fmt0.format(t.extraCost)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
       <td><button class="btn ghost" data-deltrip="${t.id}" title="Удалить рейс">✕</button></td></tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="5">Итого</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
-      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td><td class="n">${fmt0.format(sum("maintCost"))}</td>
-      <td class="n">${fmt0.format(sum("extraCost"))}</td><td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
+      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
+      <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
 }
 $("#l-month").addEventListener("change", e => { logFilter.month = e.target.value; renderLog(); });
 $("#l-vehicle").addEventListener("change", e => { logFilter.vehicle = e.target.value; renderLog(); });
@@ -744,10 +750,9 @@ function exportRows(){
   return filteredTrips().slice().reverse().map(t => ({
     "Дата": t.date, "Клиент/объект": t.client, "№ заказа": t.order, "Комментарий": t.note,
     "Маршрут": t.route, "Адреса": t.addresses || "", "Машина": t.vehicleName,
-    "Км всего": round(t.km,1), "Км с грузом": round(t.kmLoaded,1), "Км порожняком": round(t.kmEmpty,1),
+    "Км": round(t.km,1), "Вид топлива": t.fuel || "", "Расход, л/100 км": round(t.cons,1),
     "Литры": round(t.liters,2), "Цена топлива, грн/л": round(t.fuelPrice,2), "Топливо, грн": round(t.fuelCost,2),
     "Амортизация, грн/км": round(t.amortPerKm,3), "Амортизация, грн": round(t.amortCost,2),
-    "ТО и шины, грн": round(t.maintCost,2), "Дороги/парковка, грн": round(t.tolls,2), "Водитель, грн": round(t.driver,2),
     "Итого, грн": round(t.total,2), "Грн/км": round(t.perKm,2), "Сумма заказа, грн": t.orderSum ?? "", "ID рейса": t.id
   }));
 }
@@ -776,7 +781,7 @@ $("#backup-load").addEventListener("change", async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!Array.isArray(d.vehicles) || !Array.isArray(d.trips)) throw 0;
-    state = { vehicles:d.vehicles, activeVehicle:d.activeVehicle, trips:d.trips, places:d.places || [], base:d.base || null,
+    state = { vehicles:d.vehicles, activeVehicle:d.activeVehicle, trips:d.trips, places:d.places || [], base:d.base || null, fuelPrices:d.fuelPrices || state.fuelPrices,
               draft:Array.isArray(d.draft?.stops) ? d.draft : state.draft };
     persist(); renderAll(); toast(`Восстановлено: ${d.trips.length} рейсов, ${d.vehicles.length} машин`);
   } catch { toast("Файл не похож на резервную копию этого калькулятора"); }
@@ -785,12 +790,13 @@ $("#backup-load").addEventListener("change", async e => {
 
 /* ============ МАШИНЫ ============ */
 const CAR_FIELDS = [
-  ["name","Марка и модель","text"],["fuel","Топливо","text"],
-  ["consLoaded","Расход с грузом, л/100 км","number"],["consEmpty","Расход порожняком, л/100 км","number"],
-  ["fuelPrice","Цена топлива, грн/л","number"],["maint","ТО, шины, ремонт, грн/км","number"],
+  ["name","Марка и модель","text"],["fuel","Вид топлива","fuel"],["cons","Расход, л/100 км","number"],
   ["price","Цена покупки, грн","number"],["residual","Стоимость при продаже, грн","number"],
   ["life","Пробег за срок владения, км","number"]
 ];
+const carField = (v,[k,l,t]) => t === "fuel"
+  ? `<label class="f">${l}<select data-k="fuel">${FUELS.map(f => `<option ${f===v.fuel?"selected":""}>${f}</option>`).join("")}</select></label>`
+  : `<label class="f">${l}<input type="${t}" data-k="${k}" ${t==="number"?'min="0" step="any"':""} value="${esc(v[k])}"></label>`;
 function renderCars(){
   $("#cars").innerHTML = state.vehicles.map(v => `
     <div class="card stack vehicle ${v.id===state.activeVehicle?"active":""}" data-id="${v.id}">
@@ -798,7 +804,7 @@ function renderCars(){
         <h2 style="margin:0">${esc(v.name)}</h2>
         ${v.id===state.activeVehicle ? `<span class="badge">в калькуляторе</span>` : `<button class="btn small" data-use="${v.id}">Использовать</button>`}
       </div>
-      <div class="row">${CAR_FIELDS.map(([k,l,t]) => `<label class="f">${l}<input type="${t}" data-k="${k}" ${t==="number"?'min="0" step="any"':""} value="${esc(v[k])}"></label>`).join("")}</div>
+      <div class="row">${CAR_FIELDS.map(f => carField(v,f)).join("")}</div>
       <div class="derived" data-derived></div>
       <div class="toolbar"><span></span>${state.vehicles.length > 1 ? `<button class="btn small danger" data-delcar="${v.id}">Удалить машину</button>` : ""}</div>
     </div>`).join("");
@@ -807,12 +813,13 @@ function renderCars(){
 }
 function updateDerived(card){
   const v = vehicleById(card.dataset.id);
-  const fuelKm = num(v.consLoaded)*num(v.fuelPrice)/100;
+  const fuelKm = num(v.cons) * fuelPriceOf(v) / 100;
   card.querySelector("[data-derived]").innerHTML =
-    `<span>Амортизация <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
-     <span>Топливо с грузом <b>${fmt2.format(fuelKm)}</b> грн/км</span>
-     <span>Всего с грузом <b>${fmt2.format(fuelKm + amortPerKm(v) + num(v.maint))}</b> грн/км</span>`;
+    `<span>Топливо <b>${fmt2.format(fuelKm)}</b> грн/км (${esc(v.fuel)} ${fmt2.format(fuelPriceOf(v))} грн/л)</span>
+     <span>Амортизация <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
+     <span>Всего <b>${fmt2.format(fuelKm + amortPerKm(v))}</b> грн/км</span>`;
 }
+$("#cars").addEventListener("change", e => { if (e.target.dataset.k === "fuel"){ const card = e.target.closest(".vehicle"); vehicleById(card.dataset.id).fuel = e.target.value; persist(); updateDerived(card); } });
 $("#cars").addEventListener("input", e => {
   const card = e.target.closest(".vehicle"); if (!card) return;
   const v = vehicleById(card.dataset.id), k = e.target.dataset.k;
@@ -855,14 +862,14 @@ function showTab(name){
   document.querySelectorAll("section.panel").forEach(s => s.hidden = s.id !== "tab-" + name);
   if (name === "log") renderLog();
   if (name === "cars") renderCars();
-  if (name === "calc"){ renderVehicleSelect(); renderResult(); if (map) setTimeout(() => { map.invalidateSize(); fitAll(); }, 0); }
+  if (name === "calc"){ renderVehicleSelect(); renderFuel(); renderResult(); if (map) setTimeout(() => { map.invalidateSize(); fitAll(); }, 0); }
   try { localStorage.setItem(STORAGE_KEY + ".tab", name); } catch {}
 }
 
 /* ============ СТАРТ ============ */
 function renderAll(){
   renderVehicleSelect(); renderRoute(); drawMarkers(); renderResult(); renderLog(); renderCars();
-  [["#c-tolls","tolls"],["#c-driver","driver"],["#c-order-sum","orderSum"]].forEach(([s,k]) => $(s).value = state.draft[k] ?? "");
+  $("#c-order-sum").value = state.draft.orderSum ?? ""; renderFuel();
   scheduleRouting();
 }
 initMap();
