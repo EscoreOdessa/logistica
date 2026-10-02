@@ -372,7 +372,10 @@ function ukrainize(q){
   const L = "а-яёіїєґ'";
   const w = (re, to) => s = s.replace(new RegExp(`(?<![${L}])(?:${re})(?![${L}])`, "giu"), to);
   let s = q;
-  w("Одесс[аыеу]", "Одеса"); w("улица|ул\\.?", "вулиця"); w("переулок|пер\\.", "провулок");
+  w("Одесс[аыеу]", "Одеса");
+  for (const [ru, uk] of [["Черноморск[ае]?|Ильичевск[ае]?","Чорноморськ"],["Южн(ый|ого|ом)","Південне"],["Овидиополь","Овідіополь"],["Белгород-Днестровск(ий|ого)","Білгород-Дністровський"],
+      ["Измаил","Ізмаїл"],["Николаев","Миколаїв"],["Киев","Київ"],["Лиман(ское)?","Лиманка"],["Беляевка","Біляївка"],["Раздельная","Роздільна"],["Подольск","Подільськ"],
+      ["Великодолинское","Великодолинське"],["Черноморка","Чорноморка"],["Таирово","Таїрове"],["Усатово","Усатове"],["Крыжановка","Крижанівка"],["Авангард","Авангард"]]) w(ru, uk); w("улица|ул\\.?", "вулиця"); w("переулок|пер\\.", "провулок");
   w("площадь|пл\\.", "площа"); w("просп\\.", "проспект"); w("бульв\\.|бул\\.", "бульвар"); w("спуск", "узвіз"); w("дом|д\\.", "");
   s = s.replace(/инская/giu, "інська").replace(/овская/giu, "івська").replace(/евская/giu, "євська").replace(/зский|цузский/giu, m => m.replace(/зский$/i,"зький"))
        .replace(/ская/giu, "ська").replace(/ский/giu, "ський").replace(/цкая/giu, "цька").replace(/ая(?![а-яёіїєґ])/giu, "а")
@@ -397,6 +400,8 @@ async function geocode(q, signal){
     const seen = new Set();
     for (const list of lists) for (const r of list){ const k = r.lat.toFixed(4)+","+r.lon.toFixed(4); if (!seen.has(k)){ seen.add(k); merged.push(r); } }
   } catch(e){ if (e.name === "AbortError") throw e; }
+  const local = r => /Одеськ|Odesa Oblast|Одеса/.test(r.sub + " " + r.main) ? 0 : 1;
+  merged = merged.map((r,i) => ({ r, i })).sort((a,b) => local(a.r) - local(b.r) || a.i - b.i).map(x => x.r);
   if (merged.length) return merged.slice(0, 8);
   const u = `${MAP.nominatim}search?format=jsonv2&limit=6&countrycodes=ua&accept-language=uk&addressdetails=1&viewbox=29.5,47.2,31.5,45.9&q=${encodeURIComponent(queries[0])}`;
   const r = await fetch(u, { signal }); if (!r.ok) throw new Error(r.status);
@@ -466,7 +471,10 @@ async function placeStop(i, lat, lon, addr, silent){
   s.lat = lat; s.lon = lon; s.addr = addr || "…";
   if (!silent) { renderRoute(); drawMarkers(); }
   if (!addr){ s.addr = await reverseGeocode(lat, lon); }
-  if (isBase(s.label)) state.base = { addr:s.addr, lat:s.lat, lon:s.lon };
+  if (isBase(s.label)){
+    state.base = { addr:s.addr, lat:s.lat, lon:s.lon };
+    state.draft.stops.forEach(o => { if (o !== s && isBase(o.label) && !hasCoords(o) && !o.addr) Object.assign(o, state.base); });
+  }
   persist();
   if (!silent){ renderRoute(); drawMarkers(); scheduleRouting(); }
 }
