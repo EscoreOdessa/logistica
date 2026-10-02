@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Расходы на доставку</title>
+<title>Витрати на доставку</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -151,11 +151,11 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
 <body>
 <div class="wrap">
   <header>
-    <h1>Расходы на доставку оборудования<small>Поставщик → склад → клиент · Одесса и область</small></h1>
+    <h1>Витрати на доставку обладнання<small>Постачальник → склад → клієнт · Одеса та область</small></h1>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="calc" aria-selected="true">Калькулятор</button>
-      <button role="tab" data-tab="log" aria-selected="false">Журнал рейсов</button>
-      <button role="tab" data-tab="cars" aria-selected="false">Машины и адреса</button>
+      <button role="tab" data-tab="log" aria-selected="false">Журнал рейсів</button>
+      <button role="tab" data-tab="cars" aria-selected="false">Машини та адреси</button>
     </nav>
   </header>
 
@@ -168,31 +168,31 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
             <label class="f" style="flex:1 1 220px">Машина<select id="c-vehicle"></select></label>
             <div class="presets" style="align-self:end">
               <button class="btn small" data-preset="full">Через склад</button>
-              <button class="btn small" data-preset="direct">Напрямую клиенту</button>
-              <button class="btn small" data-preset="stock">Со склада клиенту</button>
+              <button class="btn small" data-preset="direct">Напряму клієнту</button>
+              <button class="btn small" data-preset="stock">Зі складу клієнту</button>
             </div>
           </div>
           <div class="fuelrow">
-            <div class="f fuelpick">Вид топлива<div class="seg" id="c-fuel" role="group" aria-label="Вид топлива"><button type="button" data-fuel="Бензин" aria-pressed="false">Бензин</button><button type="button" data-fuel="Дизель" aria-pressed="false">Дизель</button></div></div>
-            <label class="f">Расход, л/100 км<input type="number" id="c-cons" min="0" step="0.1"></label>
-            <label class="f">Цена, грн/л<input type="number" id="c-price" min="0" step="0.01"></label>
+            <div class="f fuelpick">Вид пального<div class="seg" id="c-fuel" role="group" aria-label="Вид пального"><button type="button" data-fuel="Бензин" aria-pressed="false">Бензин</button><button type="button" data-fuel="Дизель" aria-pressed="false">Дизель</button></div></div>
+            <label class="f">Витрата, л/100 км<input type="number" id="c-cons" min="0" step="0.1"></label>
+            <label class="f">Ціна, грн/л<input type="number" id="c-price" min="0" step="0.01"></label>
           </div>
           <div>
-            <div id="map" role="application" aria-label="Карта маршрута"></div>
-            <div class="maphint"><span id="map-hint">Найдите адрес в поле точки или нажмите «На карте» и кликните по карте. Метки можно перетаскивать.</span></div>
+            <div id="map" role="application" aria-label="Карта маршруту"></div>
+            <div class="maphint"><span id="map-hint">Знайдіть адресу в полі точки або натисніть «На карті» й клацніть по карті. Мітки можна перетягувати.</span></div>
           </div>
           <div class="route" id="route"></div>
           <div class="toolbar">
             <span></span>
             <button class="btn small" id="add-stop">+ Точка</button>
           </div>
-          <div class="status" id="route-status">Укажите адреса всех точек — километраж посчитается автоматически.</div>
+          <div class="status" id="route-status">Вкажіть адреси всіх точок — кілометраж порахується автоматично.</div>
         </div>
       </div>
 
       <div class="stack result">
         <div class="card">
-          <h3>Стоимость рейса</h3>
+          <h3>Вартість рейсу</h3>
           <div class="total" id="r-total">0 <small>грн</small></div>
           <div class="sub" id="r-sub"></div>
           <div class="bar" id="r-bar"></div>
@@ -201,20 +201,20 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
         </div>
 
         <div class="card stack" id="compare-card" hidden>
-          <h3 style="margin:0">Этот рейс на других машинах</h3>
+          <h3 style="margin:0">Цей рейс на інших машинах</h3>
           <dl class="break" id="r-compare" style="margin:0"></dl>
         </div>
 
         <form class="card stack" id="save-form">
-          <h3 style="margin:0">Записать в журнал</h3>
+          <h3 style="margin:0">Записати в журнал</h3>
           <div class="row">
             <label class="f">Дата<input type="date" id="s-date" required></label>
-            <label class="f">№ заказа<input type="text" id="s-order" placeholder="напр. 2026-145"></label>
+            <label class="f">№ замовлення<input type="text" id="s-order" placeholder="напр. 2026-145"></label>
           </div>
-          <label class="f">Клиент / объект<input type="text" id="s-client" placeholder="напр. Петренко, СЭС 10 кВт, Черноморск"></label>
-          <label class="f">Комментарий<input type="text" id="s-note" placeholder="что везли"></label>
-          <label class="f">Сумма заказа, грн <span class="hint">необязательно — покажет долю доставки в заказе</span><input type="number" id="c-order-sum" min="0" step="1000"></label>
-          <button class="btn primary" type="submit">Сохранить рейс</button>
+          <label class="f">Клієнт / об'єкт<input type="text" id="s-client" placeholder="напр. Петренко, СЕС 10 кВт, Чорноморськ"></label>
+          <label class="f">Коментар<input type="text" id="s-note" placeholder="що везли"></label>
+          <label class="f">Сума замовлення, грн <span class="hint">необов'язково — покаже частку доставки в замовленні</span><input type="number" id="c-order-sum" min="0" step="1000"></label>
+          <button class="btn primary" type="submit">Зберегти рейс</button>
         </form>
       </div>
     </div>
@@ -224,22 +224,22 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
   <section class="panel stack" id="tab-log" hidden>
     <div class="toolbar">
       <div class="row">
-        <label class="f" style="flex:0 1 200px">Период<select id="l-month"></select></label>
+        <label class="f" style="flex:0 1 200px">Період<select id="l-month"></select></label>
         <label class="f" style="flex:0 1 200px">Машина<select id="l-vehicle"></select></label>
       </div>
       <div class="row">
-        <button class="btn" id="exp-xlsx">Скачать Excel</button>
+        <button class="btn" id="exp-xlsx">Завантажити Excel</button>
         <button class="btn" id="exp-csv">CSV</button>
       </div>
     </div>
     <div class="kpis" id="l-kpis"></div>
     <div class="tablewrap"><table id="l-table"></table></div>
     <div class="card stack">
-      <h3 style="margin:0">Резервная копия</h3>
-      <p class="note" style="margin:0">Журнал, машины и адреса хранятся только в этом браузере. Раз в неделю-две сохраняйте резервную копию: с её помощью данные можно перенести на другой компьютер или восстановить после очистки браузера.</p>
+      <h3 style="margin:0">Резервна копія</h3>
+      <p class="note" style="margin:0">Журнал, машини та адреси зберігаються лише в цьому браузері. Раз на тиждень-два зберігайте резервну копію: з її допомогою дані можна перенести на інший комп'ютер або відновити після очищення браузера.</p>
       <div class="row">
-        <button class="btn" id="backup-save">Сохранить копию (.json)</button>
-        <label class="btn" for="backup-load" style="display:inline-block">Восстановить из копии…</label>
+        <button class="btn" id="backup-save">Зберегти копію (.json)</button>
+        <label class="btn" for="backup-load" style="display:inline-block">Відновити з копії…</label>
         <input type="file" id="backup-load" accept=".json,application/json" hidden>
       </div>
     </div>
@@ -248,13 +248,13 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
   <!-- ============ МАШИНЫ И АДРЕСА ============ -->
   <section class="panel stack" id="tab-cars" hidden>
     <div class="toolbar">
-      <p class="sub" style="margin:0;max-width:65ch">Расход и амортизация задаются для каждой марки отдельно. Добавьте несколько вариантов, чтобы сравнить кандидатов. Изменения применяются к новым расчётам; сохранённые рейсы не пересчитываются.</p>
+      <p class="sub" style="margin:0;max-width:65ch">Витрата пального, амортизація та ТО/ремонт задаються для кожної машини окремо. Додайте кілька варіантів, щоб порівняти. Зміни діють для нових розрахунків; збережені рейси не перераховуються.</p>
       <button class="btn primary" id="add-car">+ Машина</button>
     </div>
     <div class="vehicles" id="cars"></div>
     <div class="card stack">
-      <h2 style="margin:0">Сохранённые адреса</h2>
-      <p class="sub" style="margin:0">Адреса из сохранённых рейсов появляются здесь и первыми подсказываются при вводе. Точка с названием «Склад» подставляется автоматически.</p>
+      <h2 style="margin:0">Збережені адреси</h2>
+      <p class="sub" style="margin:0">Адреси зі збережених рейсів з'являються тут і першими підказуються під час введення. Точка з назвою «Склад» підставляється автоматично.</p>
       <div class="tablewrap"><table class="places" id="places"></table></div>
     </div>
   </section>
@@ -287,7 +287,7 @@ const MAP = {
 const STORAGE_KEY = "logistika-calc.v1";
 const store = {
   load(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; } },
-  save(data){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); return true; } catch { toast("Не удалось сохранить в браузере"); return false; } }
+  save(data){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); return true; } catch { toast("Не вдалося зберегти в браузері"); return false; } }
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
@@ -298,14 +298,14 @@ function toast(msg){ const t = document.createElement("div"); t.className="toast
 
 /* Примерные значения — заменить на реальные после выбора машины */
 function defaultVehicle(){
-  return { id:uid(), name:"Фургон (пример)", fuel:"Дизель",
-    cons:10, price:900000, residual:350000, life:300000 };
+  return { id:uid(), name:"Фургон (приклад)", fuel:"Дизель",
+    cons:10, amort:2, repair:1.5 };
 }
 /* Шаблоны маршрута: точки и признак «с грузом» для участков между ними */
 const PRESETS = {
-  full:  { stops:["Склад","Поставщик","Склад","Клиент","Склад"], loaded:[false,true,true,false] },
-  direct:{ stops:["Склад","Поставщик","Клиент","Склад"],         loaded:[false,true,false] },
-  stock: { stops:["Склад","Клиент","Склад"],                     loaded:[true,false] }
+  full:  { stops:["Склад","Постачальник","Склад","Клієнт","Склад"], loaded:[false,true,true,false] },
+  direct:{ stops:["Склад","Постачальник","Клієнт","Склад"],         loaded:[false,true,false] },
+  stock: { stops:["Склад","Клієнт","Склад"],                     loaded:[true,false] }
 };
 const isBase = label => /^склад$/i.test(String(label||"").trim());
 function stopFor(label){
@@ -334,13 +334,18 @@ state.fuelPrices ||= { "Бензин":58, "Дизель":55 };
 for (const v of state.vehicles){
   if (v.cons === undefined) v.cons = v.consLoaded ?? 10;
   if (!FUELS.includes(v.fuel)) v.fuel = /бенз/i.test(v.fuel || "") ? "Бензин" : "Дизель";
-  delete v.consLoaded; delete v.consEmpty; delete v.maint; delete v.fuelPrice;
+  if (v.amort === undefined){
+    const life = parseFloat(v.life) || 0;
+    v.amort = life > 0 ? Math.round(Math.max(0, (parseFloat(v.price)||0) - (parseFloat(v.residual)||0)) / life * 100) / 100 : 2;
+  }
+  if (v.repair === undefined) v.repair = v.maint ?? 1.5;
+  for (const k of ["consLoaded","consEmpty","maint","fuelPrice","price","residual","life"]) delete v[k];
 }
 const persist = () => store.save(state);
 
 /* ============ РАСЧЁТ ============ */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
-const amortPerKm = v => num(v.life) > 0 ? Math.max(0, num(v.price) - num(v.residual)) / num(v.life) : 0;
+const amortPerKm = v => num(v.amort);
 
 const fuelPriceOf = v => num(state.fuelPrices[v.fuel]);
 function calcTrip(v, legs){
@@ -350,8 +355,9 @@ function calcTrip(v, legs){
   const fuelCost = liters * fuelPrice;
   const aPerKm = amortPerKm(v);
   const amortCost = km * aPerKm;
-  const total = fuelCost + amortCost;
-  return { km, fuel:v.fuel, cons:num(v.cons), liters, fuelPrice, fuelCost, amortPerKm:aPerKm, amortCost, total, perKm: km ? total/km : 0 };
+  const repairPerKm = num(v.repair), repairCost = km * repairPerKm;
+  const total = fuelCost + amortCost + repairCost;
+  return { km, fuel:v.fuel, cons:num(v.cons), liters, fuelPrice, fuelCost, amortPerKm:aPerKm, amortCost, repairPerKm, repairCost, total, perKm: km ? total/km : 0 };
 }
 
 /* ============ ФОРМАТ ============ */
@@ -395,7 +401,7 @@ async function photonSearch(q, signal){
 }
 async function geocode(q, signal){
   const m = q.match(/^\s*(-?\d{1,2}[.,]\d+)\s*[,; ]\s*(-?\d{1,3}[.,]\d+)\s*$/);   // «46.48, 30.72»
-  if (m){ const lat = num(m[1]), lon = num(m[2]); return [{ main:`${lat.toFixed(5)}, ${lon.toFixed(5)}`, sub:"координаты", lat, lon }]; }
+  if (m){ const lat = num(m[1]), lon = num(m[2]); return [{ main:`${lat.toFixed(5)}, ${lon.toFixed(5)}`, sub:"координати", lat, lon }]; }
   const uq = ukrainize(q);
   const queries = uq !== q ? [uq, q] : [q];   // если написано по-русски — ищем оба варианта
   let merged = [];
@@ -429,13 +435,13 @@ async function reverseGeocode(lat, lon){
 /* ============ КАРТА ============ */
 let map = null, markers = [], routeLine = null, pickIndex = null;
 function initMap(){
-  if (!window.L){ $("#map").innerHTML = `<div class="empty">Карта не загрузилась — проверьте интернет. Километраж можно ввести вручную.</div>`; return; }
+  if (!window.L){ $("#map").innerHTML = `<div class="empty">Карта не завантажилася — перевірте інтернет. Кілометраж можна ввести вручну.</div>`; return; }
   map = L.map("map", { zoomControl:true }).setView(MAP.center, MAP.zoom);
   L.tileLayer(MAP.tiles, { maxZoom:19, attribution:MAP.attribution }).addTo(map);
   map.on("click", async e => {
     let i = pickIndex;
     if (i === null) i = state.draft.stops.findIndex(s => !hasCoords(s));
-    if (i < 0){ toast("Нажмите «На карте» у нужной точки, чтобы её переставить"); return; }
+    if (i < 0){ toast("Натисніть «На карті» біля потрібної точки, щоб її переставити"); return; }
     setPick(null);
     await placeStop(i, e.latlng.lat, e.latlng.lng, null);
   });
@@ -466,7 +472,7 @@ function setPick(i){
   pickIndex = i;
   $("#map")?.classList.toggle("picking", i !== null);
   document.querySelectorAll("[data-pick]").forEach(b => b.classList.toggle("on", +b.dataset.pick === i));
-  $("#map-hint").textContent = i !== null ? `Кликните по карте, чтобы поставить точку ${i+1} «${state.draft.stops[i].label}».` : "Найдите адрес в поле точки или нажмите «На карте» и кликните по карте. Метки можно перетаскивать.";
+  $("#map-hint").textContent = i !== null ? `Клацніть по карті, щоб поставити точку ${i+1} «${state.draft.stops[i].label}».` : "Знайдіть адресу в полі точки або натисніть «На карті» й клацніть по карті. Мітки можна перетягувати.";
 }
 
 /* Поставить точку: из подсказки (addr известен) или с карты (addr ищем по координатам) */
@@ -491,10 +497,10 @@ async function buildRoute(){
   const stops = state.draft.stops;
   if (routeLine){ routeLine.remove(); routeLine = null; }
   const missing = stops.map((s,i)=>hasCoords(s)?null:i+1).filter(Boolean);
-  if (stops.length < 2){ setStatus("Добавьте минимум две точки."); return; }
-  if (missing.length){ setStatus(`Не указан адрес точки ${missing.join(", ")}. Пока можно ввести километры вручную.`); fitAll(); return; }
+  if (stops.length < 2){ setStatus("Додайте щонайменше дві точки."); return; }
+  if (missing.length){ setStatus(`Не вказано адресу точки ${missing.join(", ")}. Поки що можна ввести кілометри вручну.`); fitAll(); return; }
   routeAbort?.abort(); routeAbort = new AbortController();
-  setStatus("Строю маршрут…");
+  setStatus("Будую маршрут…");
   try {
     const coords = stops.map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
     const r = await fetch(`${MAP.routing}${coords}?overview=full&geometries=geojson`, { signal:routeAbort.signal });
@@ -508,11 +514,11 @@ async function buildRoute(){
       fitAll();
     }
     const h = Math.floor(rt.duration/3600), m = Math.round(rt.duration%3600/60);
-    setStatus(`Маршрут по дорогам: ${fmt1.format(rt.distance/1000)} км · в пути около ${h ? h+" ч " : ""}${m} мин.`, "ok");
+    setStatus(`Маршрут дорогами: ${fmt1.format(rt.distance/1000)} км · у дорозі близько ${h ? h+" год " : ""}${m} хв.`, "ok");
     renderRoute(); renderResult();
   } catch(e){
     if (e.name === "AbortError") return;
-    setStatus("Не удалось построить маршрут (сервис недоступен). Введите километры вручную или попробуйте позже.", "err");
+    setStatus("Не вдалося побудувати маршрут (сервіс недоступний). Введіть кілометри вручну або спробуйте пізніше.", "err");
   }
 }
 
@@ -522,19 +528,19 @@ function renderRoute(){
   const html = [];
   stops.forEach((s,i) => {
     html.push(`<div class="stop" data-i="${i}">
-      <div class="num ${hasCoords(s)?"ok":""}" title="${hasCoords(s)?"точка на карте":"адрес не найден на карте"}">${i+1}</div>
-      <input type="text" class="role" data-k="label" value="${esc(s.label)}" aria-label="Что за точка" placeholder="Склад / Клиент">
-      <div class="addrbox"><input type="text" class="addr" data-k="addr" value="${esc(s.addr)}" placeholder="Адрес: улица, дом, город" autocomplete="off" aria-label="Адрес точки ${i+1}"><div class="sugg" hidden></div></div>
-      <button class="btn small" data-pick="${i}" type="button" title="Указать точку кликом по карте">На карте</button>
-      <button class="btn ghost" data-delstop="${i}" type="button" aria-label="Удалить точку" title="Удалить точку" ${stops.length<=2?"disabled":""}>✕</button>
+      <div class="num ${hasCoords(s)?"ok":""}" title="${hasCoords(s)?"точка на карті":"адресу не знайдено на карті"}">${i+1}</div>
+      <input type="text" class="role" data-k="label" value="${esc(s.label)}" aria-label="Що за точка" placeholder="Склад / Клієнт">
+      <div class="addrbox"><input type="text" class="addr" data-k="addr" value="${esc(s.addr)}" placeholder="Адреса: вулиця, будинок, місто" autocomplete="off" aria-label="Адреса точки ${i+1}"><div class="sugg" hidden></div></div>
+      <button class="btn small" data-pick="${i}" type="button" title="Вказати точку кліком по карті">На карті</button>
+      <button class="btn ghost" data-delstop="${i}" type="button" aria-label="Видалити точку" title="Видалити точку" ${stops.length<=2?"disabled":""}>✕</button>
     </div>`);
     if (i < legs.length){
       const l = legs[i];
       const src = l.manual
-        ? `вручную${l.auto ? ` · по карте ${fmt1.format(l.auto)} км <button type="button" data-auto="${i}">вернуть</button>` : ""}`
-        : (hasCoords(s) && hasCoords(stops[i+1]) ? "по карте" : "");
+        ? `вручну${l.auto ? ` · за картою ${fmt1.format(l.auto)} км <button type="button" data-auto="${i}">повернути</button>` : ""}`
+        : (hasCoords(s) && hasCoords(stops[i+1]) ? "за картою" : "");
       html.push(`<div class="leg" data-leg="${i}">
-        <input type="number" min="0" step="0.1" data-k="km" value="${l.km || 0}" aria-label="Километров на участке ${i+1}–${i+2}"> км
+        <input type="number" min="0" step="0.1" data-k="km" value="${l.km || 0}" aria-label="Кілометрів на ділянці ${i+1}–${i+2}"> км
         <span class="src">${src}</span></div>`);
     }
   });
@@ -584,8 +590,8 @@ function suggest(input, i){
     .map(p => ({ main:p.addr, sub:p.label, lat:p.lat, lon:p.lon, saved:true }));
   const show = (list, loading) => {
     suggResults = list;
-    box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">сохранён</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
-      + (loading ? `<div class="none">Ищу…</div>` : (!list.length ? `<div class="none">Ничего не найдено. Уточните адрес или укажите точку на карте.</div>` : ""));
+    box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">збережено</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
+      + (loading ? `<div class="none">Шукаю…</div>` : (!list.length ? `<div class="none">Нічого не знайдено. Уточніть адресу або вкажіть точку на карті.</div>` : ""));
     box.hidden = !q;
   };
   if (q.length < 3){ show(saved, false); if (!saved.length) box.hidden = true; return; }
@@ -607,7 +613,7 @@ function removeStop(i){
 }
 $("#add-stop").addEventListener("click", () => {
   const { stops, legs } = state.draft;
-  stops.push({ label:"Клиент", addr:"", lat:null, lon:null });
+  stops.push({ label:"Клієнт", addr:"", lat:null, lon:null });
   legs.push({ km:0, manual:false });
   persist(); renderRoute(); renderResult();
   setTimeout(() => document.querySelector(`.stop[data-i="${stops.length-1}"] .addr`)?.focus(), 0);
@@ -638,17 +644,18 @@ function renderResult(){
   const v = activeVehicle();
   const r = calcTrip(v, state.draft.legs);
   $("#r-total").innerHTML = `${fmt0.format(Math.round(r.total))} <small>грн</small>`;
-  $("#r-sub").textContent = r.km ? `${fmt2.format(r.perKm)} грн за км · ${fmt1.format(r.km)} км · ${v.name}` : "Укажите точки маршрута";
-  $("#r-bar").innerHTML = r.total ? [[r.fuelCost,"var(--sun)","Топливо"],[r.amortCost,"var(--accent)","Амортизация"]].filter(p=>p[0]>0)
+  $("#r-sub").textContent = r.km ? `${fmt2.format(r.perKm)} грн за км · ${fmt1.format(r.km)} км · ${v.name}` : "Вкажіть точки маршруту";
+  $("#r-bar").innerHTML = r.total ? [[r.fuelCost,"var(--sun)","Пальне"],[r.amortCost,"var(--accent)","Амортизація"],[r.repairCost,"var(--muted)","ТО / ремонт"]].filter(p=>p[0]>0)
     .map(p => `<span title="${p[2]}" style="width:${p[0]/r.total*100}%;background:${p[1]}"></span>`).join("") : "";
   $("#r-break").innerHTML = `
     <dt><i style="background:var(--sun)"></i>${esc(r.fuel)} · ${fmt1.format(r.liters)} л × ${fmt2.format(r.fuelPrice)} грн</dt><dd>${uah(r.fuelCost)}</dd>
-    <dt><i style="background:var(--accent)"></i>Амортизация · ${fmt2.format(r.amortPerKm)} грн/км</dt><dd>${uah(r.amortCost)}</dd>
+    <dt><i style="background:var(--accent)"></i>Амортизація · ${fmt2.format(r.amortPerKm)} грн/км</dt><dd>${uah(r.amortCost)}</dd>
+    <dt><i style="background:var(--muted)"></i>ТО / ремонт · ${fmt2.format(r.repairPerKm)} грн/км</dt><dd>${uah(r.repairCost)}</dd>
     <div class="sep"></div>
-    <dt>Итого</dt><dd><b>${uah(r.total)}</b></dd>`;
+    <dt>Разом</dt><dd><b>${uah(r.total)}</b></dd>`;
   const os = num(state.draft.orderSum);
-  $("#r-chips").innerHTML = `<span class="chip">расход <b>${fmt1.format(r.cons)}</b> л/100 км</span>`
-    + (os > 0 ? `<span class="chip">доля в заказе <b>${fmt1.format(r.total/os*100)}%</b></span>` : "");
+  $("#r-chips").innerHTML = `<span class="chip">витрата <b>${fmt1.format(r.cons)}</b> л/100 км</span>`
+    + (os > 0 ? `<span class="chip">частка в замовленні <b>${fmt1.format(r.total/os*100)}%</b></span>` : "");
   const others = state.vehicles.filter(x => x.id !== v.id);
   $("#compare-card").hidden = !others.length || !r.km;
   $("#r-compare").innerHTML = others.map(o => {
@@ -664,7 +671,7 @@ $("#save-form").addEventListener("submit", e => {
   const { stops } = state.draft;
   const legs = state.draft.legs.map((l,i) => ({ from:stops[i].label, to:stops[i+1].label, km:num(l.km), manual:!!l.manual }));
   const r = calcTrip(v, legs);
-  if (!r.km){ toast("Нет километража — укажите точки или введите км"); return; }
+  if (!r.km){ toast("Немає кілометражу — вкажіть точки або введіть км"); return; }
   state.trips.push({
     id:uid(), date:$("#s-date").value || today(), createdAt:new Date().toISOString(),
     client:$("#s-client").value.trim(), order:$("#s-order").value.trim(), note:$("#s-note").value.trim(),
@@ -682,12 +689,12 @@ $("#save-form").addEventListener("submit", e => {
   persist();
   $("#s-client").value = ""; $("#s-order").value = ""; $("#s-note").value = "";
   $("#c-order-sum").value = ""; state.draft.orderSum = ""; persist(); renderResult();
-  toast(`Рейс сохранён: ${uah(r.total)}`);
+  toast(`Рейс збережено: ${uah(r.total)}`);
 });
 
 /* ============ ЖУРНАЛ ============ */
 const monthKey = d => (d || "").slice(0,7);
-const monthName = k => { const [y,m] = k.split("-"); return new Date(+y, +m-1, 1).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); };
+const monthName = k => { const [y,m] = k.split("-"); return new Date(+y, +m-1, 1).toLocaleDateString("uk-UA",{month:"long",year:"numeric"}); };
 let logFilter = { month: monthKey(today()), vehicle:"all" };
 function filteredTrips(){
   return state.trips
@@ -698,36 +705,36 @@ function filteredTrips(){
 function renderLog(){
   const months = [...new Set(state.trips.map(t => monthKey(t.date)).concat(monthKey(today())))].sort().reverse();
   if (logFilter.month !== "all" && !months.includes(logFilter.month)) logFilter.month = months[0];
-  $("#l-month").innerHTML = months.map(m => `<option value="${m}" ${m===logFilter.month?"selected":""}>${monthName(m)}</option>`).join("") + `<option value="all" ${logFilter.month==="all"?"selected":""}>Все время</option>`;
+  $("#l-month").innerHTML = months.map(m => `<option value="${m}" ${m===logFilter.month?"selected":""}>${monthName(m)}</option>`).join("") + `<option value="all" ${logFilter.month==="all"?"selected":""}>Увесь час</option>`;
   const vIds = [...new Set(state.trips.map(t => t.vehicleId))];
-  $("#l-vehicle").innerHTML = `<option value="all">Все машины</option>` + vIds.map(id => {
+  $("#l-vehicle").innerHTML = `<option value="all">Усі машини</option>` + vIds.map(id => {
     const name = state.trips.find(t=>t.vehicleId===id).vehicleName;
     return `<option value="${id}" ${id===logFilter.vehicle?"selected":""}>${esc(name)}</option>`; }).join("");
   const rows = filteredTrips();
   const sum = k => rows.reduce((s,t) => s + (t[k]||0), 0);
   const tot = sum("total"), km = sum("km");
   $("#l-kpis").innerHTML = `
-    <div class="kpi"><span>Рейсов</span><div>${rows.length}</div></div>
-    <div class="kpi"><span>Пробег</span><div>${fmt0.format(km)} км</div></div>
-    <div class="kpi"><span>Топливо</span><div>${fmt0.format(sum("liters"))} л</div></div>
-    <div class="kpi"><span>Расходы · ${km?fmt2.format(tot/km):"0"} грн/км</span><div>${uah(tot)}</div></div>`;
+    <div class="kpi"><span>Рейсів</span><div>${rows.length}</div></div>
+    <div class="kpi"><span>Пробіг</span><div>${fmt0.format(km)} км</div></div>
+    <div class="kpi"><span>Пальне</span><div>${fmt0.format(sum("liters"))} л</div></div>
+    <div class="kpi"><span>Витрати · ${km?fmt2.format(tot/km):"0"} грн/км</span><div>${uah(tot)}</div></div>`;
   if (!rows.length){
-    $("#l-table").innerHTML = `<tbody><tr><td class="empty">За этот период рейсов нет. Посчитайте рейс в калькуляторе и нажмите «Сохранить рейс».</td></tr></tbody>`;
+    $("#l-table").innerHTML = `<tbody><tr><td class="empty">За цей період рейсів немає. Порахуйте рейс у калькуляторі й натисніть «Зберегти рейс».</td></tr></tbody>`;
     return;
   }
   $("#l-table").innerHTML = `
-    <thead><tr><th>Дата</th><th>Клиент / объект</th><th>Заказ</th><th>Маршрут</th><th>Машина</th>
-      <th class="n">Км</th><th class="n">Литры</th><th class="n">Топливо, грн</th><th class="n">Амортиз.</th><th class="n">Итого</th><th></th></tr></thead>
+    <thead><tr><th>Дата</th><th>Клієнт / об'єкт</th><th>Замовлення</th><th>Маршрут</th><th>Машина</th>
+      <th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">ТО / ремонт</th><th class="n">Разом</th><th></th></tr></thead>
     <tbody>${rows.map(t => `<tr>
-      <td>${new Date(t.date).toLocaleDateString("ru-RU")}</td>
+      <td>${new Date(t.date).toLocaleDateString("uk-UA")}</td>
       <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}</td>
       <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
-      <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
+      <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td><td class="n">${fmt0.format(t.repairCost||0)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
-      <td><button class="btn ghost" data-deltrip="${t.id}" title="Удалить рейс">✕</button></td></tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="5">Итого</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
-      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
+      <td><button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="5">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
+      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td><td class="n">${fmt0.format(sum("repairCost"))}</td>
       <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
 }
 $("#l-month").addEventListener("change", e => { logFilter.month = e.target.value; renderLog(); });
@@ -739,7 +746,7 @@ function armDelete(b, label, done){
 }
 $("#l-table").addEventListener("click", e => {
   const b = e.target.closest("[data-deltrip]"); if (!b) return;
-  armDelete(b, "Удалить?", () => { state.trips = state.trips.filter(t => t.id !== b.dataset.deltrip); persist(); renderLog(); toast("Рейс удалён"); });
+  armDelete(b, "Видалити?", () => { state.trips = state.trips.filter(t => t.id !== b.dataset.deltrip); persist(); renderLog(); toast("Рейс видалено"); });
 });
 
 /* ============ ЭКСПОРТ ============
@@ -748,26 +755,26 @@ $("#l-table").addEventListener("click", e => {
 const round = (n,d) => Math.round((n||0) * 10**d) / 10**d;
 function exportRows(){
   return filteredTrips().slice().reverse().map(t => ({
-    "Дата": t.date, "Клиент/объект": t.client, "№ заказа": t.order, "Комментарий": t.note,
-    "Маршрут": t.route, "Адреса": t.addresses || "", "Машина": t.vehicleName,
-    "Км": round(t.km,1), "Вид топлива": t.fuel || "", "Расход, л/100 км": round(t.cons,1),
-    "Литры": round(t.liters,2), "Цена топлива, грн/л": round(t.fuelPrice,2), "Топливо, грн": round(t.fuelCost,2),
-    "Амортизация, грн/км": round(t.amortPerKm,3), "Амортизация, грн": round(t.amortCost,2),
-    "Итого, грн": round(t.total,2), "Грн/км": round(t.perKm,2), "Сумма заказа, грн": t.orderSum ?? "", "ID рейса": t.id
+    "Дата": t.date, "Клієнт/об'єкт": t.client, "№ замовлення": t.order, "Коментар": t.note,
+    "Маршрут": t.route, "Адреси": t.addresses || "", "Машина": t.vehicleName,
+    "Км": round(t.km,1), "Вид пального": t.fuel || "", "Витрата, л/100 км": round(t.cons,1),
+    "Літри": round(t.liters,2), "Ціна пального, грн/л": round(t.fuelPrice,2), "Пальне, грн": round(t.fuelCost,2),
+    "Амортизація, грн/км": round(t.amortPerKm,3), "Амортизація, грн": round(t.amortCost,2), "ТО/ремонт, грн/км": round(t.repairPerKm,2), "ТО/ремонт, грн": round(t.repairCost,2),
+    "Разом, грн": round(t.total,2), "Грн/км": round(t.perKm,2), "Сума замовлення, грн": t.orderSum ?? "", "ID рейсу": t.id
   }));
 }
 const fileTag = () => logFilter.month === "all" ? "vse" : logFilter.month;
 function download(name, blob){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 $("#exp-xlsx").addEventListener("click", () => {
-  const rows = exportRows(); if (!rows.length) return toast("Нет рейсов за этот период");
-  if (!window.XLSX) return toast("Excel-модуль не загрузился — используйте CSV");
+  const rows = exportRows(); if (!rows.length) return toast("Немає рейсів за цей період");
+  if (!window.XLSX) return toast("Модуль Excel не завантажився — скористайтеся CSV");
   const ws = XLSX.utils.json_to_sheet(rows);
   ws["!cols"] = Object.keys(rows[0]).map(k => ({ wch: Math.max(10, k.length + 2) }));
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Рейсы");
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Рейси");
   XLSX.writeFile(wb, `reisy-${fileTag()}.xlsx`);
 });
 $("#exp-csv").addEventListener("click", () => {
-  const rows = exportRows(); if (!rows.length) return toast("Нет рейсов за этот период");
+  const rows = exportRows(); if (!rows.length) return toast("Немає рейсів за цей період");
   const cols = Object.keys(rows[0]);
   const cell = v => { const s = typeof v === "number" ? String(v).replace(".", ",") : String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
   const csv = "﻿" + [cols.join(";")].concat(rows.map(r => cols.map(c => cell(r[c])).join(";"))).join("\r\n");
@@ -783,16 +790,15 @@ $("#backup-load").addEventListener("change", async e => {
     if (!Array.isArray(d.vehicles) || !Array.isArray(d.trips)) throw 0;
     state = { vehicles:d.vehicles, activeVehicle:d.activeVehicle, trips:d.trips, places:d.places || [], base:d.base || null, fuelPrices:d.fuelPrices || state.fuelPrices,
               draft:Array.isArray(d.draft?.stops) ? d.draft : state.draft };
-    persist(); renderAll(); toast(`Восстановлено: ${d.trips.length} рейсов, ${d.vehicles.length} машин`);
-  } catch { toast("Файл не похож на резервную копию этого калькулятора"); }
+    persist(); renderAll(); toast(`Відновлено: рейсів — ${d.trips.length}, машин — ${d.vehicles.length}`);
+  } catch { toast("Файл не схожий на резервну копію цього калькулятора"); }
   e.target.value = "";
 });
 
 /* ============ МАШИНЫ ============ */
 const CAR_FIELDS = [
-  ["name","Марка и модель","text"],["fuel","Вид топлива","fuel"],["cons","Расход, л/100 км","number"],
-  ["price","Цена покупки, грн","number"],["residual","Стоимость при продаже, грн","number"],
-  ["life","Пробег за срок владения, км","number"]
+  ["name","Марка і модель","text"],["fuel","Вид пального","fuel"],["cons","Витрата, л/100 км","number"],
+  ["amort","Амортизація, грн/км","number"],["repair","ТО / ремонт, грн/км","number"]
 ];
 const carField = (v,[k,l,t]) => t === "fuel"
   ? `<label class="f">${l}<select data-k="fuel">${FUELS.map(f => `<option ${f===v.fuel?"selected":""}>${f}</option>`).join("")}</select></label>`
@@ -802,11 +808,11 @@ function renderCars(){
     <div class="card stack vehicle ${v.id===state.activeVehicle?"active":""}" data-id="${v.id}">
       <div class="toolbar">
         <h2 style="margin:0">${esc(v.name)}</h2>
-        ${v.id===state.activeVehicle ? `<span class="badge">в калькуляторе</span>` : `<button class="btn small" data-use="${v.id}">Использовать</button>`}
+        ${v.id===state.activeVehicle ? `<span class="badge">у калькуляторі</span>` : `<button class="btn small" data-use="${v.id}">Використовувати</button>`}
       </div>
       <div class="row">${CAR_FIELDS.map(f => carField(v,f)).join("")}</div>
       <div class="derived" data-derived></div>
-      <div class="toolbar"><span></span>${state.vehicles.length > 1 ? `<button class="btn small danger" data-delcar="${v.id}">Удалить машину</button>` : ""}</div>
+      <div class="toolbar"><span></span>${state.vehicles.length > 1 ? `<button class="btn small danger" data-delcar="${v.id}">Видалити машину</button>` : ""}</div>
     </div>`).join("");
   document.querySelectorAll(".vehicle").forEach(updateDerived);
   renderPlaces();
@@ -815,9 +821,10 @@ function updateDerived(card){
   const v = vehicleById(card.dataset.id);
   const fuelKm = num(v.cons) * fuelPriceOf(v) / 100;
   card.querySelector("[data-derived]").innerHTML =
-    `<span>Топливо <b>${fmt2.format(fuelKm)}</b> грн/км (${esc(v.fuel)} ${fmt2.format(fuelPriceOf(v))} грн/л)</span>
-     <span>Амортизация <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
-     <span>Всего <b>${fmt2.format(fuelKm + amortPerKm(v))}</b> грн/км</span>`;
+    `<span>Пальне <b>${fmt2.format(fuelKm)}</b> грн/км (${esc(v.fuel)} ${fmt2.format(fuelPriceOf(v))} грн/л)</span>
+     <span>Амортизація <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
+     <span>ТО / ремонт <b>${fmt2.format(num(v.repair))}</b> грн/км</span>
+     <span>Усього <b>${fmt2.format(fuelKm + amortPerKm(v) + num(v.repair))}</b> грн/км</span>`;
 }
 $("#cars").addEventListener("change", e => { if (e.target.dataset.k === "fuel"){ const card = e.target.closest(".vehicle"); vehicleById(card.dataset.id).fuel = e.target.value; persist(); updateDerived(card); } });
 $("#cars").addEventListener("input", e => {
@@ -830,7 +837,7 @@ $("#cars").addEventListener("input", e => {
 $("#cars").addEventListener("click", e => {
   const use = e.target.closest("[data-use]"), del = e.target.closest("[data-delcar]");
   if (use){ state.activeVehicle = use.dataset.use; persist(); renderCars(); }
-  if (del) armDelete(del, "Точно удалить?", () => {
+  if (del) armDelete(del, "Точно видалити?", () => {
     state.vehicles = state.vehicles.filter(v => v.id !== del.dataset.delcar);
     if (!state.vehicles.some(v => v.id === state.activeVehicle)) state.activeVehicle = state.vehicles[0].id;
     persist(); renderCars();
@@ -843,16 +850,16 @@ $("#add-car").addEventListener("click", () => {
 /* ============ АДРЕСА ============ */
 function renderPlaces(){
   const rows = [];
-  if (state.base) rows.push(`<tr><td><b>Склад</b> <span class="sub">(подставляется в шаблоны)</span></td><td>${esc(state.base.addr)}</td><td></td></tr>`);
+  if (state.base) rows.push(`<tr><td><b>Склад</b> <span class="sub">(підставляється в шаблони)</span></td><td>${esc(state.base.addr)}</td><td></td></tr>`);
   state.places.slice().sort((a,b) => (b.used||0)-(a.used||0)).forEach(p =>
-    rows.push(`<tr><td>${esc(p.label)}</td><td>${esc(p.addr)}</td><td><button class="btn ghost" data-delplace="${p.id}" title="Удалить адрес">✕</button></td></tr>`));
+    rows.push(`<tr><td>${esc(p.label)}</td><td>${esc(p.addr)}</td><td><button class="btn ghost" data-delplace="${p.id}" title="Видалити адресу">✕</button></td></tr>`));
   $("#places").innerHTML = rows.length
-    ? `<thead><tr><th>Точка</th><th>Адрес</th><th></th></tr></thead><tbody>${rows.join("")}</tbody>`
-    : `<tbody><tr><td class="empty">Пока пусто. Укажите адрес склада в калькуляторе (точка «Склад») — он запомнится.</td></tr></tbody>`;
+    ? `<thead><tr><th>Точка</th><th>Адреса</th><th></th></tr></thead><tbody>${rows.join("")}</tbody>`
+    : `<tbody><tr><td class="empty">Поки що порожньо. Вкажіть адресу складу в калькуляторі (точка «Склад») — вона запам'ятається.</td></tr></tbody>`;
 }
 $("#places").addEventListener("click", e => {
   const b = e.target.closest("[data-delplace]"); if (!b) return;
-  armDelete(b, "Удалить?", () => { state.places = state.places.filter(p => p.id !== b.dataset.delplace); persist(); renderPlaces(); });
+  armDelete(b, "Видалити?", () => { state.places = state.places.filter(p => p.id !== b.dataset.delplace); persist(); renderPlaces(); });
 });
 
 /* ============ ВКЛАДКИ ============ */
