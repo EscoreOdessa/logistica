@@ -85,6 +85,8 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);padding:0
 .sugg button:hover,.sugg button:focus-visible{background:var(--surface-2)}
 .sugg small{display:block;color:var(--muted);font-size:12px}
 .sugg .tag{font-size:11px;color:var(--accent);font-weight:600;margin-right:6px}
+.sugg .tag.warn,.approx{color:var(--sun)}
+.approx{grid-column:2/-1;font-size:12px;font-weight:600}
 .sugg .none{padding:8px 10px;color:var(--muted);font-size:13px}
 .leg{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 4px 12px;padding:6px 0 6px 22px;border-left:3px dashed var(--line);font-size:13px;color:var(--muted)}
 .leg.loaded{border-left:3px solid var(--sun)}
@@ -426,7 +428,7 @@ function photonLabel(p){
   const street = [p.street, p.housenumber].filter(Boolean).join(", ");
   const place = p.city || p.town || p.village || p.locality || p.district || p.county || "";
   const main = p.name && p.name !== p.street ? (street ? `${p.name}, ${street}` : p.name) : (street || p.name || "");
-  return { main: main || place, sub: [main ? place : "", p.state].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(", ") };
+  return { main: main || place, house: !!p.housenumber, sub: [main ? place : "", p.state].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(", ") };
 }
 /* Русское написание → украинское (в OpenStreetMap названия на украинском):
    «Дерибасовская ул., Одесса» → «Дерибасівська вулиця, Одеса» */
@@ -467,7 +469,7 @@ async function geocode(q, signal){
   if (merged.length) return merged.slice(0, 8);
   const u = `${MAP.nominatim}search?format=jsonv2&limit=6&accept-language=uk&addressdetails=1&viewbox=29.5,47.2,31.5,45.9&q=${encodeURIComponent(queries[0])}`;
   const r = await fetch(u, { signal }); if (!r.ok) throw new Error(r.status);
-  return (await r.json()).map(x => ({ main:shortAddr(x) || x.display_name, sub:x.display_name, lat:+x.lat, lon:+x.lon }));
+  return (await r.json()).map(x => ({ main:shortAddr(x) || x.display_name, house:!!x.address?.house_number, sub:x.display_name, lat:+x.lat, lon:+x.lon }));
 }
 function shortAddr(x){
   const a = x.address || {};
@@ -509,7 +511,7 @@ function drawMarkers(){
     const s = state.draft.stops[idx[0]];
     const m = L.marker([s.lat, s.lon], { draggable:true, icon:pinIcon(idx.map(i=>i+1).join(","), isBase(s.label)), title:`${s.label}: ${s.addr}` }).addTo(map);
     m.bindTooltip(`${esc(s.label)}<br>${esc(s.addr)}`);
-    m.on("dragend", async () => { const p = m.getLatLng(); for (const i of idx) await placeStop(i, p.lat, p.lng, null, true); renderRoute(); drawMarkers(); scheduleRouting(); });
+    m.on("dragend", async () => { const p = m.getLatLng(); for (const i of idx) await placeStop(i, p.lat, p.lng, null, true, false); renderRoute(); drawMarkers(); scheduleRouting(); });
     markers.push(m);
   }
 }
@@ -528,11 +530,14 @@ function setPick(i){
 }
 
 /* Поставить точку: из подсказки (addr известен) или с карты (addr ищем по координатам) */
-async function placeStop(i, lat, lon, addr, silent){
+async function placeStop(i, lat, lon, addr, silent, approx){
   const s = state.draft.stops[i]; if (!s) return;
-  s.lat = lat; s.lon = lon; s.addr = addr || "…";
+  const keepText = !addr && s.approx && s.addr;   // уточнення на карті: лишаємо введену адресу з номером будинку
+  s.lat = lat; s.lon = lon; s.approx = !!approx;
+  if (!keepText) s.addr = addr || "…";
   if (!silent) { renderRoute(); drawMarkers(); }
-  if (!addr){ s.addr = await reverseGeocode(lat, lon); }
+  if (!addr && !keepText){ s.addr = await reverseGeocode(lat, lon); }
+  if (approx && !silent){ setPick(i); toast("Будинок не знайдено на карті — клацніть точне місце на карті або перетягніть мітку"); }
   if (isBase(s.label)){
     state.base = { addr:s.addr, lat:s.lat, lon:s.lon };
     state.draft.stops.forEach(o => { if (o !== s && isBase(o.label) && !hasCoords(o) && !o.addr) Object.assign(o, state.base); });
@@ -585,6 +590,7 @@ function renderRoute(){
       <div class="addrbox"><input type="text" class="addr" data-k="addr" value="${esc(s.addr)}" placeholder="Адреса: вулиця, будинок, місто" autocomplete="off" aria-label="Адреса точки ${i+1}"><div class="sugg" hidden></div></div>
       <button class="btn small" data-pick="${i}" type="button" title="Вказати точку кліком по карті">На карті</button>
       <button class="btn ghost" data-delstop="${i}" type="button" aria-label="Видалити точку" title="Видалити точку" ${stops.length<=2?"disabled":""}>✕</button>
+      ${s.approx && hasCoords(s) ? `<div class="approx">⚠ Мітка стоїть на початку вулиці, а не біля будинку. Клацніть точне місце на карті або перетягніть мітку.</div>` : ""}
     </div>`);
     if (i < legs.length){
       const l = legs[i];
@@ -608,7 +614,13 @@ $("#route").addEventListener("input", e => {
   if (stopEl){
     const s = state.draft.stops[+stopEl.dataset.i];
     if (k === "label"){ s.label = t.value; persist(); drawMarkers(); return; }
-    if (k === "addr"){ s.addr = t.value; s.lat = s.lon = null; stopEl.querySelector(".num").classList.remove("ok"); persist(); suggest(t, +stopEl.dataset.i); }
+    if (k === "addr"){
+      const i = +stopEl.dataset.i;
+      s.addr = t.value; s.lat = s.lon = null; s.approx = false; stopEl.querySelector(".num").classList.remove("ok");
+      for (const li of [i-1, i]){ const l = state.draft.legs[li]; if (l && !l.manual){ l.km = 0; l.auto = 0; } }
+      document.querySelectorAll(".leg").forEach(el => { const l = state.draft.legs[+el.dataset.leg]; const inp = el.querySelector("input"); if (l && !l.manual && inp) inp.value = l.km || 0; });
+      persist(); renderResult(); suggest(t, i);
+    }
   }
   if (legEl){
     const l = state.draft.legs[+legEl.dataset.leg];
@@ -621,13 +633,13 @@ $("#route").addEventListener("click", e => {
   if (pick){ const i = +pick.dataset.pick; setPick(pickIndex === i ? null : i); }
   if (del){ removeStop(+del.dataset.delstop); }
   if (auto){ const l = state.draft.legs[+auto.dataset.auto]; l.manual = false; l.km = l.auto; persist(); renderRoute(); renderResult(); }
-  if (sg){ const i = +sg.closest(".stop").dataset.i, r = suggResults[+sg.dataset.sugg]; if (r) placeStop(i, r.lat, r.lon, r.main); }
+  if (sg){ const i = +sg.closest(".stop").dataset.i, r = suggResults[+sg.dataset.sugg]; if (r) placeStop(i, r.lat, r.lon, r.approx ? r.query : r.main, false, r.approx); }
 });
 $("#route").addEventListener("mousedown", e => { if (e.target.closest(".sugg")) e.preventDefault(); });
 $("#route").addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.dataset.k === "addr"){
     e.preventDefault(); const i = +e.target.closest(".stop").dataset.i;
-    if (suggResults[0]) placeStop(i, suggResults[0].lat, suggResults[0].lon, suggResults[0].main);
+    const r = suggResults[0]; if (r) placeStop(i, r.lat, r.lon, r.approx ? r.query : r.main, false, r.approx);
   }
   if (e.key === "Escape") document.querySelectorAll(".sugg").forEach(s => s.hidden = true);
 });
@@ -642,7 +654,7 @@ function suggest(input, i){
     .map(p => ({ main:p.addr, sub:p.label, lat:p.lat, lon:p.lon, saved:true }));
   const show = (list, loading) => {
     suggResults = list;
-    box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">збережено</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
+    box.innerHTML = list.map((r,j) => `<button type="button" data-sugg="${j}">${r.saved?`<span class="tag">збережено</span>`:""}${!r.saved && r.approx?`<span class="tag warn">будинок не знайдено — лише вулиця</span>`:""}${esc(r.main)}<small>${esc(r.sub)}</small></button>`).join("")
       + (loading ? `<div class="none">Шукаю…</div>` : (!list.length ? `<div class="none">Нічого не знайдено. Уточніть адресу або вкажіть точку на карті.</div>` : ""));
     box.hidden = !q;
   };
@@ -650,7 +662,11 @@ function suggest(input, i){
   show(saved, true);
   suggTimer = setTimeout(async () => {
     suggAbort = new AbortController();
-    try { const res = await geocode(input.value.trim(), suggAbort.signal); if (document.activeElement === input) show(saved.concat(res), false); }
+    try {
+      const qv = input.value.trim(), wantsHouse = /\d/.test(qv.replace(/^\s*\d+\s*$/,""));
+      const res = (await geocode(qv, suggAbort.signal)).map(r => ({ ...r, approx: wantsHouse && r.house === false, query: qv }));
+      if (document.activeElement === input) show(saved.concat(res), false);
+    }
     catch(e){ if (e.name !== "AbortError") show(saved, false); }
   }, 400);
 }
