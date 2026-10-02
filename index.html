@@ -145,6 +145,13 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
 .derived{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .derived b{font-family:var(--font-num);color:var(--fg)}
 .places td{white-space:normal}
+.syncbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--line);margin-right:6px}
+.dot.on{background:var(--accent)} .dot.warn{background:var(--sun)} .dot.err{background:var(--danger)}
+.pending{font-size:11px;font-weight:600;color:var(--sun);text-transform:uppercase;letter-spacing:.04em}
+details.how summary{cursor:pointer;color:var(--route);font-size:14px}
+details.how ol{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px;max-width:70ch}
+details.how code{font-family:var(--font-num);font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -166,11 +173,6 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
         <div class="card stack">
           <div class="toolbar">
             <label class="f" style="flex:1 1 220px">Машина<select id="c-vehicle"></select></label>
-            <div class="presets" style="align-self:end">
-              <button class="btn small" data-preset="full">Через склад</button>
-              <button class="btn small" data-preset="direct">Напряму клієнту</button>
-              <button class="btn small" data-preset="stock">Зі складу клієнту</button>
-            </div>
           </div>
           <div class="fuelrow">
             <div class="f fuelpick">Вид пального<div class="seg" id="c-fuel" role="group" aria-label="Вид пального"><button type="button" data-fuel="Бензин" aria-pressed="false">Бензин</button><button type="button" data-fuel="Дизель" aria-pressed="false">Дизель</button></div></div>
@@ -183,7 +185,7 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
           </div>
           <div class="route" id="route"></div>
           <div class="toolbar">
-            <span></span>
+            <button class="btn small ghost" id="clear-route" type="button">Очистити маршрут</button>
             <button class="btn small" id="add-stop">+ Точка</button>
           </div>
           <div class="status" id="route-status">Вкажіть адреси всіх точок — кілометраж порахується автоматично.</div>
@@ -234,14 +236,32 @@ tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--
     </div>
     <div class="kpis" id="l-kpis"></div>
     <div class="tablewrap"><table id="l-table"></table></div>
-    <div class="card stack">
-      <h3 style="margin:0">Резервна копія</h3>
-      <p class="note" style="margin:0">Журнал, машини та адреси зберігаються лише в цьому браузері. Раз на тиждень-два зберігайте резервну копію: з її допомогою дані можна перенести на інший комп'ютер або відновити після очищення браузера.</p>
-      <div class="row">
-        <button class="btn" id="backup-save">Зберегти копію (.json)</button>
-        <label class="btn" for="backup-load" style="display:inline-block">Відновити з копії…</label>
-        <input type="file" id="backup-load" accept=".json,application/json" hidden>
+    <div class="card stack" id="gs-card">
+      <div class="toolbar">
+        <h3 style="margin:0">Google-таблиця</h3>
+        <div class="syncbar" id="gs-status"></div>
       </div>
+      <p class="note" style="margin:0">Підключіть Google-таблицю — і журнал стане спільним: рейси з усіх комп'ютерів і телефонів записуються в одну таблицю, а тут показуються з неї.</p>
+      <div class="row">
+        <label class="f" style="flex:3 1 280px">Адреса веб-застосунку (URL)<input type="url" id="gs-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+        <label class="f" style="flex:1 1 140px">Ключ <span class="hint">якщо задали в скрипті</span><input type="text" id="gs-key" autocomplete="off"></label>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="gs-save" type="button">Підключити</button>
+        <button class="btn" id="gs-refresh" type="button">Оновити з таблиці</button>
+        <button class="btn" id="gs-push" type="button" hidden>Надіслати непередані</button>
+        <button class="btn ghost" id="gs-off" type="button" hidden>Відключити</button>
+      </div>
+      <details class="how">
+        <summary>Як підключити таблицю (5 хвилин, один раз)</summary>
+        <ol>
+          <li>Створіть нову Google-таблицю, наприклад «Журнал рейсів».</li>
+          <li>У таблиці: <b>Розширення → Apps Script</b>. Видаліть усе в редакторі.</li>
+          <li><button class="btn small" id="gs-copy" type="button">Скопіювати код скрипту</button> і вставте його в редактор, натисніть «Зберегти». Код також лежить у репозиторії: <code>apps-script.gs</code>.</li>
+          <li><b>Розгорнути → Нове розгортання</b> → тип «Веб-застосунок». Виконувати як: <b>Я</b>. Хто має доступ: <b>Будь-хто</b>. Натисніть «Розгорнути» і дозвольте доступ до таблиці.</li>
+          <li>Скопіюйте <b>URL веб-застосунку</b> (закінчується на <code>/exec</code>), вставте вище й натисніть «Підключити».</li>
+        </ol>
+      </details>
     </div>
   </section>
 
@@ -294,7 +314,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7
 const today = () => new Date().toISOString().slice(0,10);
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function toast(msg){ const t = document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
+function toast(msg){ document.querySelectorAll(".toast").forEach(x => x.remove()); const t = document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
 
 /* Примерные значения — заменить на реальные после выбора машины */
 function defaultVehicle(){
@@ -303,6 +323,7 @@ function defaultVehicle(){
 }
 /* Шаблоны маршрута: точки и признак «с грузом» для участков между ними */
 const PRESETS = {
+  start: { stops:["Склад","Клієнт"], loaded:[false] },
   full:  { stops:["Склад","Постачальник","Склад","Клієнт","Склад"], loaded:[false,true,true,false] },
   direct:{ stops:["Склад","Постачальник","Клієнт","Склад"],         loaded:[false,true,false] },
   stock: { stops:["Склад","Клієнт","Склад"],                     loaded:[true,false] }
@@ -326,7 +347,7 @@ if (!state || !Array.isArray(state.vehicles) || !state.vehicles.length){
 state.trips ||= []; state.places ||= []; state.base ||= null;
 if (!state.draft || !Array.isArray(state.draft.stops)){
   const old = state.draft || {};
-  state.draft = { ...draftFromPreset("full"), orderSum:old.orderSum ?? "" };
+  state.draft = { ...draftFromPreset("start"), orderSum:old.orderSum ?? "" };
 }
 /* Цены на топливо — общие для всех машин (примерные, поменяйте на актуальные) */
 const FUELS = ["Бензин","Дизель"];
@@ -341,6 +362,7 @@ for (const v of state.vehicles){
   if (v.repair === undefined) v.repair = v.maint ?? 1.5;
   for (const k of ["consLoaded","consEmpty","maint","fuelPrice","price","residual","life"]) delete v[k];
 }
+state.sheet ||= { url:"", key:"" };
 const persist = () => store.save(state);
 
 /* ============ РАСЧЁТ ============ */
@@ -618,8 +640,8 @@ $("#add-stop").addEventListener("click", () => {
   persist(); renderRoute(); renderResult();
   setTimeout(() => document.querySelector(`.stop[data-i="${stops.length-1}"] .addr`)?.focus(), 0);
 });
-document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
-  Object.assign(state.draft, draftFromPreset(b.dataset.preset));
+$("#clear-route").addEventListener("click", e => armDelete(e.currentTarget, "Точно очистити?", () => {
+  Object.assign(state.draft, draftFromPreset("start"));
   setPick(null); persist(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting();
 }));
 
@@ -678,7 +700,7 @@ $("#save-form").addEventListener("submit", e => {
     vehicleId:v.id, vehicleName:v.name,
     route:stops.map(s => s.label).join(" → "),
     addresses:stops.map(s => s.addr).join(" → "),
-    stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r
+    stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r, synced:false
   });
   // запомнить адреса
   for (const s of stops) if (hasCoords(s) && s.addr){
@@ -689,27 +711,36 @@ $("#save-form").addEventListener("submit", e => {
   persist();
   $("#s-client").value = ""; $("#s-order").value = ""; $("#s-note").value = "";
   $("#c-order-sum").value = ""; state.draft.orderSum = ""; persist(); renderResult();
-  toast(`Рейс збережено: ${uah(r.total)}`);
+  if (sheetOn()){
+    toast(`Рейс збережено: ${uah(r.total)} · надсилаю в таблицю…`);
+    pushPending(true).then(n => { toast("Рейс записано в Google-таблицю"); refreshRemote(true); })
+      .catch(err => { toast("Рейс збережено в браузері, у таблицю не передано: " + err.message); renderSheetStatus(); });
+  } else toast(`Рейс збережено: ${uah(r.total)}`);
 });
 
 /* ============ ЖУРНАЛ ============ */
 const monthKey = d => (d || "").slice(0,7);
 const monthName = k => { const [y,m] = k.split("-"); return new Date(+y, +m-1, 1).toLocaleDateString("uk-UA",{month:"long",year:"numeric"}); };
 let logFilter = { month: monthKey(today()), vehicle:"all" };
+function journalTrips(){
+  if (!sheetOn()) return state.trips;
+  return (remote.trips || []).concat(state.trips.filter(t => !t.synced));
+}
 function filteredTrips(){
-  return state.trips
+  return journalTrips()
     .filter(t => logFilter.month === "all" || monthKey(t.date) === logFilter.month)
-    .filter(t => logFilter.vehicle === "all" || t.vehicleId === logFilter.vehicle)
+    .filter(t => logFilter.vehicle === "all" || t.vehicleName === logFilter.vehicle)
     .sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.createdAt||"").localeCompare(a.createdAt||""));
 }
 function renderLog(){
-  const months = [...new Set(state.trips.map(t => monthKey(t.date)).concat(monthKey(today())))].sort().reverse();
+  renderSheetStatus();
+  const all = journalTrips();
+  const months = [...new Set(all.map(t => monthKey(t.date)).concat(monthKey(today())))].sort().reverse();
   if (logFilter.month !== "all" && !months.includes(logFilter.month)) logFilter.month = months[0];
   $("#l-month").innerHTML = months.map(m => `<option value="${m}" ${m===logFilter.month?"selected":""}>${monthName(m)}</option>`).join("") + `<option value="all" ${logFilter.month==="all"?"selected":""}>Увесь час</option>`;
-  const vIds = [...new Set(state.trips.map(t => t.vehicleId))];
-  $("#l-vehicle").innerHTML = `<option value="all">Усі машини</option>` + vIds.map(id => {
-    const name = state.trips.find(t=>t.vehicleId===id).vehicleName;
-    return `<option value="${id}" ${id===logFilter.vehicle?"selected":""}>${esc(name)}</option>`; }).join("");
+  const vNames = [...new Set(all.map(t => t.vehicleName).filter(Boolean))];
+  $("#l-vehicle").innerHTML = `<option value="all">Усі машини</option>` + vNames.map(n =>
+    `<option value="${esc(n)}" ${n===logFilter.vehicle?"selected":""}>${esc(n)}</option>`).join("");
   const rows = filteredTrips();
   const sum = k => rows.reduce((s,t) => s + (t[k]||0), 0);
   const tot = sum("total"), km = sum("km");
@@ -726,8 +757,8 @@ function renderLog(){
     <thead><tr><th>Дата</th><th>Клієнт / об'єкт</th><th>Замовлення</th><th>Маршрут</th><th>Машина</th>
       <th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">ТО / ремонт</th><th class="n">Разом</th><th></th></tr></thead>
     <tbody>${rows.map(t => `<tr>
-      <td>${new Date(t.date).toLocaleDateString("uk-UA")}</td>
-      <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}</td>
+      <td>${fmtDate(t.date)}</td>
+      <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}${sheetOn() && !t.synced && !t.remote ? `<div class="pending">не передано в таблицю</div>` : ""}</td>
       <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
       <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td><td class="n">${fmt0.format(t.repairCost||0)}</td>
@@ -746,23 +777,51 @@ function armDelete(b, label, done){
 }
 $("#l-table").addEventListener("click", e => {
   const b = e.target.closest("[data-deltrip]"); if (!b) return;
-  armDelete(b, "Видалити?", () => { state.trips = state.trips.filter(t => t.id !== b.dataset.deltrip); persist(); renderLog(); toast("Рейс видалено"); });
+  armDelete(b, "Видалити?", async () => {
+    const id = b.dataset.deltrip;
+    const t = journalTrips().find(x => x.id === id);
+    if (sheetOn() && t && (t.remote || t.synced)){
+      try { await sheetCall({ action:"delete", id }); remote.trips = (remote.trips||[]).filter(x => x.id !== id); }
+      catch(err){ toast("Не вдалося видалити в таблиці: " + err.message); return; }
+    }
+    state.trips = state.trips.filter(x => x.id !== id); persist(); renderLog(); toast("Рейс видалено");
+  });
 });
 
 /* ============ ЭКСПОРТ ============
    Плоские строки с понятными колонками — подходят для импорта
    в любую учётную систему (1С/BAS, Dilovod, Odoo и т. п.). */
 const round = (n,d) => Math.round((n||0) * 10**d) / 10**d;
-function exportRows(){
-  return filteredTrips().slice().reverse().map(t => ({
-    "Дата": t.date, "Клієнт/об'єкт": t.client, "№ замовлення": t.order, "Коментар": t.note,
-    "Маршрут": t.route, "Адреси": t.addresses || "", "Машина": t.vehicleName,
-    "Км": round(t.km,1), "Вид пального": t.fuel || "", "Витрата, л/100 км": round(t.cons,1),
-    "Літри": round(t.liters,2), "Ціна пального, грн/л": round(t.fuelPrice,2), "Пальне, грн": round(t.fuelCost,2),
-    "Амортизація, грн/км": round(t.amortPerKm,3), "Амортизація, грн": round(t.amortCost,2), "ТО/ремонт, грн/км": round(t.repairPerKm,2), "ТО/ремонт, грн": round(t.repairCost,2),
-    "Разом, грн": round(t.total,2), "Грн/км": round(t.perKm,2), "Сума замовлення, грн": t.orderSum ?? "", "ID рейсу": t.id
-  }));
+/* Колонки журналу: однакові для Excel/CSV і Google-таблиці */
+const COLS = [
+  ["date","Дата"],["client","Клієнт/об'єкт"],["order","№ замовлення"],["note","Коментар"],
+  ["route","Маршрут"],["addresses","Адреси"],["vehicleName","Машина"],
+  ["km","Км",1],["fuel","Вид пального"],["cons","Витрата, л/100 км",1],["liters","Літри",2],["fuelPrice","Ціна пального, грн/л",2],["fuelCost","Пальне, грн",2],
+  ["amortPerKm","Амортизація, грн/км",2],["amortCost","Амортизація, грн",2],["repairPerKm","ТО/ремонт, грн/км",2],["repairCost","ТО/ремонт, грн",2],
+  ["total","Разом, грн",2],["perKm","Грн/км",2],["orderSum","Сума замовлення, грн",2],
+  ["id","ID рейсу"],["createdAt","Створено"]
+];
+function tripToRow(t){
+  const r = {};
+  for (const [k,h,d] of COLS){
+    const v = t[k];
+    r[h] = d !== undefined ? (v === null || v === undefined || v === "" ? "" : round(num(v), d)) : (v ?? "");
+  }
+  return r;
 }
+function rowToTrip(r){
+  const t = { remote:true, synced:true };
+  for (const [k,h,d] of COLS){ const v = r[h] ?? ""; t[k] = d !== undefined ? (v === "" ? (k === "orderSum" ? null : 0) : num(String(v).replace(/\s/g,""))) : String(v); }
+  t.date = normDate(t.date);
+  if (!t.id) t.id = "row-" + Math.random().toString(36).slice(2,9);
+  return t;
+}
+function normDate(d){
+  const m = String(d||"").match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})/);
+  return m ? `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}` : String(d||"").slice(0,10);
+}
+function fmtDate(d){ const [y,m,dd] = String(d||"").split("-"); return y && m && dd ? `${dd}.${m}.${y}` : String(d||""); }
+function exportRows(){ return filteredTrips().slice().reverse().map(tripToRow); }
 const fileTag = () => logFilter.month === "all" ? "vse" : logFilter.month;
 function download(name, blob){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 $("#exp-xlsx").addEventListener("click", () => {
@@ -780,19 +839,72 @@ $("#exp-csv").addEventListener("click", () => {
   const csv = "﻿" + [cols.join(";")].concat(rows.map(r => cols.map(c => cell(r[c])).join(";"))).join("\r\n");
   download(`reisy-${fileTag()}.csv`, new Blob([csv], { type:"text/csv;charset=utf-8" }));
 });
-$("#backup-save").addEventListener("click", () => {
-  download(`logistika-backup-${today()}.json`, new Blob([JSON.stringify({ app:"logistika-calc", version:2, savedAt:new Date().toISOString(), ...state }, null, 2)], { type:"application/json" }));
-});
-$("#backup-load").addEventListener("change", async e => {
-  const f = e.target.files[0]; if (!f) return;
+/* ============ GOOGLE-ТАБЛИЦЯ ============
+   Запити до веб-застосунку Apps Script (apps-script.gs у репозиторії).
+   text/plain — щоб браузер не робив попередній CORS-запит. */
+const remote = { trips:null, at:null, error:null, busy:false };
+const sheetOn = () => !!state.sheet.url;
+async function sheetCall(body){
+  const r = await fetch(state.sheet.url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ ...body, key:state.sheet.key || undefined }) });
+  let d; try { d = await r.json(); } catch { throw new Error("таблиця відповіла не JSON — перевірте URL і доступ «Будь-хто»"); }
+  if (!d.ok) throw new Error(d.error || "помилка таблиці");
+  return d;
+}
+async function refreshRemote(silent){
+  if (!sheetOn() || remote.busy) return;
+  remote.busy = true; renderSheetStatus();
   try {
-    const d = JSON.parse(await f.text());
-    if (!Array.isArray(d.vehicles) || !Array.isArray(d.trips)) throw 0;
-    state = { vehicles:d.vehicles, activeVehicle:d.activeVehicle, trips:d.trips, places:d.places || [], base:d.base || null, fuelPrices:d.fuelPrices || state.fuelPrices,
-              draft:Array.isArray(d.draft?.stops) ? d.draft : state.draft };
-    persist(); renderAll(); toast(`Відновлено: рейсів — ${d.trips.length}, машин — ${d.vehicles.length}`);
-  } catch { toast("Файл не схожий на резервну копію цього калькулятора"); }
-  e.target.value = "";
+    await pushPending(true);
+    const d = await sheetCall({ action:"list" });
+    remote.trips = d.rows.map(rowToTrip); remote.at = new Date(); remote.error = null;
+    try { localStorage.setItem(STORAGE_KEY + ".remote", JSON.stringify(remote.trips)); } catch {}
+  } catch(e){ remote.error = e.message; if (!silent) toast("Таблиця: " + e.message); }
+  remote.busy = false;
+  if (!$("#tab-log").hidden) renderLog(); else renderSheetStatus();
+}
+async function pushPending(quiet){
+  const pend = state.trips.filter(t => !t.synced);
+  if (!sheetOn() || !pend.length) return 0;
+  try {
+    await sheetCall({ action:"add", rows:pend.map(tripToRow) });
+    pend.forEach(t => t.synced = true); persist();
+    return pend.length;
+  } catch(e){ remote.error = e.message; if (!quiet) toast("Не вдалося надіслати: " + e.message); throw e; }
+}
+function renderSheetStatus(){
+  const el = $("#gs-status"); if (!el) return;
+  const pend = state.trips.filter(t => !t.synced).length;
+  let html;
+  if (!sheetOn()) html = `<span><span class="dot"></span>Журнал лише в цьому браузері</span>`;
+  else if (remote.busy) html = `<span><span class="dot warn"></span>Синхронізація…</span>`;
+  else if (remote.error) html = `<span><span class="dot err"></span>Помилка: ${esc(remote.error)}</span>`;
+  else html = `<span><span class="dot on"></span>Підключено${remote.at ? " · оновлено о " + remote.at.toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"}) : ""}</span>`;
+  if (sheetOn() && pend) html += `<span class="pending">не передано: ${pend}</span>`;
+  el.innerHTML = html;
+  $("#gs-push").hidden = !(sheetOn() && pend);
+  $("#gs-off").hidden = !sheetOn();
+  $("#gs-save").textContent = sheetOn() ? "Зберегти" : "Підключити";
+}
+$("#gs-save").addEventListener("click", async () => {
+  const url = $("#gs-url").value.trim(), key = $("#gs-key").value.trim();
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url)){ toast("Вставте URL веб-застосунку Apps Script (https://script.google.com/…/exec)"); return; }
+  state.sheet = { url, key }; persist();
+  remote.trips = null; remote.error = null;
+  await refreshRemote(false);
+  if (!remote.error) toast("Google-таблицю підключено");
+});
+$("#gs-refresh").addEventListener("click", () => sheetOn() ? refreshRemote(false) : toast("Спочатку підключіть таблицю"));
+$("#gs-push").addEventListener("click", async () => { try { const n = await pushPending(false); toast(`Надіслано рейсів: ${n}`); } catch {} refreshRemote(true); });
+$("#gs-off").addEventListener("click", e => armDelete(e.currentTarget, "Точно відключити?", () => {
+  state.sheet = { url:"", key:"" }; remote.trips = null; persist(); $("#gs-url").value = ""; $("#gs-key").value = ""; renderLog(); toast("Таблицю відключено");
+}));
+$("#gs-copy").addEventListener("click", async e => {
+  const btn = e.currentTarget;
+  try {
+    const code = await (await fetch("apps-script.gs", { cache:"no-cache" })).text();
+    await navigator.clipboard.writeText(code);
+    btn.textContent = "Скопійовано ✓"; setTimeout(() => btn.textContent = "Скопіювати код скрипту", 2000);
+  } catch { window.open("https://github.com/EscoreOdessa/logistica/blob/main/apps-script.gs", "_blank"); }
 });
 
 /* ============ МАШИНЫ ============ */
@@ -867,7 +979,7 @@ document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("cl
 function showTab(name){
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
   document.querySelectorAll("section.panel").forEach(s => s.hidden = s.id !== "tab-" + name);
-  if (name === "log") renderLog();
+  if (name === "log"){ renderLog(); if (sheetOn() && (!remote.at || Date.now() - remote.at > 60000)) refreshRemote(true); }
   if (name === "cars") renderCars();
   if (name === "calc"){ renderVehicleSelect(); renderFuel(); renderResult(); if (map) setTimeout(() => { map.invalidateSize(); fitAll(); }, 0); }
   try { localStorage.setItem(STORAGE_KEY + ".tab", name); } catch {}
@@ -879,8 +991,11 @@ function renderAll(){
   $("#c-order-sum").value = state.draft.orderSum ?? ""; renderFuel();
   scheduleRouting();
 }
+try { const c = JSON.parse(localStorage.getItem(STORAGE_KEY + ".remote")); if (Array.isArray(c)) remote.trips = c; } catch {}
+$("#gs-url").value = state.sheet.url; $("#gs-key").value = state.sheet.key;
 initMap();
 renderAll();
+if (sheetOn()) refreshRemote(true);
 let startTab = "calc"; try { startTab = localStorage.getItem(STORAGE_KEY + ".tab") || "calc"; } catch {}
 showTab(startTab);
 </script>
