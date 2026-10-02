@@ -131,6 +131,12 @@ td.n,th.n{text-align:right;font-family:var(--font-num);font-variant-numeric:tabu
 tbody tr:last-child td{border-bottom:0}
 tfoot td{font-weight:600;background:var(--surface-2);border-top:2px solid var(--line);border-bottom:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.rep-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.rep-controls .f{flex:0 1 180px}
+tr.subtotal td{font-weight:600;background:var(--surface-2)}
+tr.grp td:first-child{font-weight:600}
+.share{display:flex;gap:8px;flex-wrap:wrap}
+.share input{flex:1 1 260px;font-size:12px}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 @media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
@@ -162,6 +168,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="calc" aria-selected="true">Калькулятор</button>
       <button role="tab" data-tab="log" aria-selected="false">Журнал рейсів</button>
+      <button role="tab" data-tab="rep" aria-selected="false">Звіти</button>
       <button role="tab" data-tab="cars" aria-selected="false">Машини та адреси</button>
     </nav>
   </header>
@@ -250,7 +257,12 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
         <button class="btn primary" id="gs-save" type="button">Підключити</button>
         <button class="btn" id="gs-refresh" type="button">Оновити з таблиці</button>
         <button class="btn" id="gs-push" type="button" hidden>Надіслати непередані</button>
+        <button class="btn" id="gs-share" type="button" hidden>Посилання для колег</button>
         <button class="btn ghost" id="gs-off" type="button" hidden>Відключити</button>
+      </div>
+      <div class="share" id="gs-share-box" hidden>
+        <input type="text" id="gs-share-link" readonly aria-label="Посилання для колег">
+        <span class="sub">Колега відкриває це посилання — і калькулятор одразу підключається до таблиці.</span>
       </div>
       <details class="how">
         <summary>Як підключити таблицю (5 хвилин, один раз)</summary>
@@ -263,6 +275,24 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
         </ol>
       </details>
     </div>
+  </section>
+
+  <!-- ============ ЗВІТИ ============ -->
+  <section class="panel stack" id="tab-rep" hidden>
+    <div class="toolbar">
+      <div class="rep-controls">
+        <label class="f">З місяця<input type="month" id="rep-from" placeholder="2026-09"></label>
+        <label class="f">По місяць<input type="month" id="rep-to" placeholder="2026-10"></label>
+        <label class="f" style="flex:0 1 220px">Розріз<select id="rep-mode">
+          <option value="month">По місяцях</option>
+          <option value="car">По машинах</option>
+          <option value="both">Машини по місяцях</option>
+        </select></label>
+      </div>
+      <button class="btn" id="rep-xlsx" type="button">Завантажити звіт (Excel)</button>
+    </div>
+    <div class="kpis" id="rep-kpis"></div>
+    <div class="tablewrap"><table id="rep-table"></table></div>
   </section>
 
   <!-- ============ МАШИНЫ И АДРЕСА ============ -->
@@ -861,6 +891,7 @@ async function refreshRemote(silent){
   } catch(e){ remote.error = e.message; if (!silent) toast("Таблиця: " + e.message); }
   remote.busy = false;
   if (!$("#tab-log").hidden) renderLog(); else renderSheetStatus();
+  if (!$("#tab-rep").hidden) renderReport();
 }
 async function pushPending(quiet){
   const pend = state.trips.filter(t => !t.synced);
@@ -883,6 +914,7 @@ function renderSheetStatus(){
   el.innerHTML = html;
   $("#gs-push").hidden = !(sheetOn() && pend);
   $("#gs-off").hidden = !sheetOn();
+  $("#gs-share").hidden = !sheetOn(); if (!sheetOn()) $("#gs-share-box").hidden = true;
   $("#gs-save").textContent = sheetOn() ? "Зберегти" : "Підключити";
 }
 $("#gs-save").addEventListener("click", async () => {
@@ -892,6 +924,12 @@ $("#gs-save").addEventListener("click", async () => {
   remote.trips = null; remote.error = null;
   await refreshRemote(false);
   if (!remote.error) toast("Google-таблицю підключено");
+});
+$("#gs-share").addEventListener("click", async () => {
+  const link = `${location.origin}${location.pathname}#gs=${encodeURIComponent(state.sheet.url)}${state.sheet.key ? "&k=" + encodeURIComponent(state.sheet.key) : ""}`;
+  $("#gs-share-link").value = link; $("#gs-share-box").hidden = false;
+  try { await navigator.clipboard.writeText(link); toast("Посилання скопійовано — надішліть його колегам"); }
+  catch { $("#gs-share-link").select(); }
 });
 $("#gs-refresh").addEventListener("click", () => sheetOn() ? refreshRemote(false) : toast("Спочатку підключіть таблицю"));
 $("#gs-push").addEventListener("click", async () => { try { const n = await pushPending(false); toast(`Надіслано рейсів: ${n}`); } catch {} refreshRemote(true); });
@@ -974,6 +1012,68 @@ $("#places").addEventListener("click", e => {
   armDelete(b, "Видалити?", () => { state.places = state.places.filter(p => p.id !== b.dataset.delplace); persist(); renderPlaces(); });
 });
 
+/* ============ ЗВІТИ ============ */
+function agg(list){
+  const a = { n:list.length, km:0, liters:0, fuel:0, amort:0, repair:0, total:0 };
+  for (const t of list){ a.km += num(t.km); a.liters += num(t.liters); a.fuel += num(t.fuelCost); a.amort += num(t.amortCost); a.repair += num(t.repairCost); a.total += num(t.total); }
+  return a;
+}
+let repRows = [];
+function initReportRange(){
+  if ($("#rep-to").value) return;
+  const months = journalTrips().map(t => monthKey(t.date)).filter(Boolean).sort();
+  $("#rep-to").value = monthKey(today());
+  $("#rep-from").value = months[0] && months[0] < monthKey(today()) ? months[0] : monthKey(today());
+}
+function renderReport(){
+  initReportRange();
+  let from = $("#rep-from").value, to = $("#rep-to").value, mode = $("#rep-mode").value;
+  if (from && to && from > to) [from, to] = [to, from];
+  const trips = journalTrips().filter(t => { const m = monthKey(t.date); return (!from || m >= from) && (!to || m <= to); });
+  const total = agg(trips);
+  $("#rep-kpis").innerHTML = `
+    <div class="kpi"><span>Рейсів</span><div>${total.n}</div></div>
+    <div class="kpi"><span>Пробіг</span><div>${fmt0.format(total.km)} км</div></div>
+    <div class="kpi"><span>Пальне</span><div>${fmt0.format(total.liters)} л</div></div>
+    <div class="kpi"><span>Витрати · ${total.km ? fmt2.format(total.total/total.km) : "0"} грн/км</span><div>${uah(total.total)}</div></div>`;
+  const byMonth = l => { const g = new Map(); for (const t of l){ const k = monthKey(t.date); (g.get(k) || g.set(k, []).get(k)).push(t); } return [...g.entries()].sort((a,b) => a[0].localeCompare(b[0])); };
+  const byCar = l => { const g = new Map(); for (const t of l){ const k = t.vehicleName || "—"; (g.get(k) || g.set(k, []).get(k)).push(t); } return [...g.entries()].sort((a,b) => a[0].localeCompare(b[0], "uk")); };
+  repRows = [];
+  const push = (month, car, a, kind) => repRows.push({ month, car, a, kind });
+  if (mode === "month") byMonth(trips).forEach(([m,l]) => push(m, "", agg(l), "row"));
+  else if (mode === "car") byCar(trips).forEach(([c,l]) => push("", c, agg(l), "row"));
+  else byMonth(trips).forEach(([m,l]) => { byCar(l).forEach(([c,cl], i) => push(i ? "" : m, c, agg(cl), "row")); push(m, "", agg(l), "subtotal"); });
+  if (!trips.length){ $("#rep-table").innerHTML = `<tbody><tr><td class="empty">За вибраний період рейсів немає.</td></tr></tbody>`; return; }
+  const showMonth = mode !== "car", showCar = mode !== "month";
+  const cells = a => `<td class="n">${a.n}</td><td class="n">${fmt1.format(a.km)}</td><td class="n">${fmt1.format(a.liters)}</td><td class="n">${fmt0.format(a.fuel)}</td><td class="n">${fmt0.format(a.amort)}</td><td class="n">${fmt0.format(a.repair)}</td><td class="n"><b>${fmt0.format(a.total)}</b></td><td class="n">${a.km ? fmt2.format(a.total/a.km) : "—"}</td>`;
+  $("#rep-table").innerHTML = `
+    <thead><tr>${showMonth ? "<th>Місяць</th>" : ""}${showCar ? "<th>Машина</th>" : ""}<th class="n">Рейсів</th><th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">ТО / ремонт</th><th class="n">Разом</th><th class="n">Грн/км</th></tr></thead>
+    <tbody>${repRows.map(r => r.kind === "subtotal"
+      ? `<tr class="subtotal"><td colspan="2">Разом за ${monthName(r.month)}</td>${cells(r.a)}</tr>`
+      : `<tr class="${showMonth && showCar && r.month ? "grp" : ""}">${showMonth ? `<td>${r.month ? monthName(r.month) : ""}</td>` : ""}${showCar ? `<td>${esc(r.car)}</td>` : ""}${cells(r.a)}</tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="${(showMonth?1:0)+(showCar?1:0)}">Разом за період</td>${cells(total)}</tr></tfoot>`;
+}
+["#rep-from","#rep-to","#rep-mode"].forEach(sel => $(sel).addEventListener("change", renderReport));
+$("#rep-xlsx").addEventListener("click", () => {
+  if (!repRows.length) return toast("Немає даних за період");
+  if (!window.XLSX) return toast("Модуль Excel не завантажився");
+  const mode = $("#rep-mode").value;
+  let lastMonth = "";
+  const rows = repRows.map(r => {
+    if (r.month) lastMonth = r.month;
+    const o = {};
+    if (mode !== "car") o["Місяць"] = r.kind === "subtotal" ? "Разом за " + monthName(r.month) : (r.month ? monthName(r.month) : monthName(lastMonth));
+    if (mode !== "month") o["Машина"] = r.car;
+    Object.assign(o, { "Рейсів":r.a.n, "Км":round(r.a.km,1), "Літри":round(r.a.liters,1), "Пальне, грн":round(r.a.fuel,2), "Амортизація, грн":round(r.a.amort,2),
+      "ТО/ремонт, грн":round(r.a.repair,2), "Разом, грн":round(r.a.total,2), "Грн/км":r.a.km ? round(r.a.total/r.a.km,2) : "" });
+    return o;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = Object.keys(rows[0]).map(k => ({ wch: Math.max(12, k.length + 2) }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Звіт");
+  XLSX.writeFile(wb, `zvit-${$("#rep-from").value}_${$("#rep-to").value}.xlsx`);
+});
+
 /* ============ ВКЛАДКИ ============ */
 document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 function showTab(name){
@@ -981,6 +1081,7 @@ function showTab(name){
   document.querySelectorAll("section.panel").forEach(s => s.hidden = s.id !== "tab-" + name);
   if (name === "log"){ renderLog(); if (sheetOn() && (!remote.at || Date.now() - remote.at > 60000)) refreshRemote(true); }
   if (name === "cars") renderCars();
+  if (name === "rep"){ renderReport(); if (sheetOn() && (!remote.at || Date.now() - remote.at > 60000)) refreshRemote(true); }
   if (name === "calc"){ renderVehicleSelect(); renderFuel(); renderResult(); if (map) setTimeout(() => { map.invalidateSize(); fitAll(); }, 0); }
   try { localStorage.setItem(STORAGE_KEY + ".tab", name); } catch {}
 }
@@ -992,6 +1093,12 @@ function renderAll(){
   scheduleRouting();
 }
 try { const c = JSON.parse(localStorage.getItem(STORAGE_KEY + ".remote")); if (Array.isArray(c)) remote.trips = c; } catch {}
+/* посилання від колеги: #gs=<URL>&k=<ключ> — підключає таблицю й прибирає параметри з адреси */
+if (location.hash.startsWith("#gs=")){
+  const h = new URLSearchParams(location.hash.slice(1)), u = h.get("gs") || "";
+  if (/^https:\/\/script\.google(usercontent)?\.com\//.test(u)){ state.sheet = { url:u, key:h.get("k") || "" }; persist(); setTimeout(() => toast("Google-таблицю підключено"), 300); }
+  history.replaceState(null, "", location.pathname + location.search);
+}
 $("#gs-url").value = state.sheet.url; $("#gs-key").value = state.sheet.key;
 initMap();
 renderAll();
