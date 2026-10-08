@@ -300,7 +300,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
   <!-- ============ МАШИНЫ И АДРЕСА ============ -->
   <section class="panel stack" id="tab-cars" hidden>
     <div class="toolbar">
-      <p class="sub" style="margin:0;max-width:65ch">Витрата пального, амортизація та ТО/ремонт задаються для кожної машини окремо. Додайте кілька варіантів, щоб порівняти. Зміни діють для нових розрахунків; збережені рейси не перераховуються.</p>
+      <p class="sub" style="margin:0;max-width:65ch">Витрата пального та амортизація задаються для кожної машини окремо. Додайте кілька варіантів, щоб порівняти. Зміни діють для нових розрахунків; збережені рейси не перераховуються.</p>
       <button class="btn primary" id="add-car">+ Машина</button>
     </div>
     <div class="vehicles" id="cars"></div>
@@ -351,7 +351,7 @@ function toast(msg){ document.querySelectorAll(".toast").forEach(x => x.remove()
 /* Примерные значения — заменить на реальные после выбора машины */
 function defaultVehicle(){
   return { id:uid(), name:"Фургон (приклад)", fuel:"Дизель",
-    cons:10, amort:2, repair:1.5 };
+    cons:10, amort:2 };
 }
 /* Шаблоны маршрута: точки и признак «с грузом» для участков между ними */
 const PRESETS = {
@@ -391,8 +391,7 @@ for (const v of state.vehicles){
     const life = parseFloat(v.life) || 0;
     v.amort = life > 0 ? Math.round(Math.max(0, (parseFloat(v.price)||0) - (parseFloat(v.residual)||0)) / life * 100) / 100 : 2;
   }
-  if (v.repair === undefined) v.repair = v.maint ?? 1.5;
-  for (const k of ["consLoaded","consEmpty","maint","fuelPrice","price","residual","life"]) delete v[k];
+  for (const k of ["consLoaded","consEmpty","maint","fuelPrice","price","residual","life","repair"]) delete v[k];
 }
 state.sheet ||= { url:"", key:"" };
 if (state.baseLocked === undefined) state.baseLocked = false;
@@ -412,9 +411,15 @@ function calcTrip(v, legs){
   const fuelCost = liters * fuelPrice;
   const aPerKm = amortPerKm(v);
   const amortCost = km * aPerKm;
-  const repairPerKm = num(v.repair), repairCost = km * repairPerKm;
-  const total = fuelCost + amortCost + repairCost;
-  return { km, fuel:v.fuel, cons:num(v.cons), liters, fuelPrice, fuelCost, amortPerKm:aPerKm, amortCost, repairPerKm, repairCost, total, perKm: km ? total/km : 0 };
+  const total = fuelCost + amortCost;
+  return { km, fuel:v.fuel, cons:num(v.cons), liters, fuelPrice, fuelCost, amortPerKm:aPerKm, amortCost, total, perKm: km ? total/km : 0 };
+}
+/* Разом = пальне + амортизація (ТО/ремонт прибрано — старі рейси перераховуються) */
+function normTrip(t){
+  t.total = num(t.fuelCost) + num(t.amortCost);
+  t.perKm = num(t.km) ? t.total / num(t.km) : 0;
+  delete t.repairCost; delete t.repairPerKm; delete t.maintCost; delete t.extraCost;
+  return t;
 }
 
 /* ============ ФОРМАТ ============ */
@@ -727,12 +732,11 @@ function renderResult(){
   const r = calcTrip(v, state.draft.legs);
   $("#r-total").innerHTML = `${fmt0.format(Math.round(r.total))} <small>грн</small>`;
   $("#r-sub").textContent = r.km ? `${fmt2.format(r.perKm)} грн за км · ${fmt1.format(r.km)} км · ${v.name}` : "Вкажіть точки маршруту";
-  $("#r-bar").innerHTML = r.total ? [[r.fuelCost,"var(--sun)","Пальне"],[r.amortCost,"var(--accent)","Амортизація"],[r.repairCost,"var(--muted)","ТО / ремонт"]].filter(p=>p[0]>0)
+  $("#r-bar").innerHTML = r.total ? [[r.fuelCost,"var(--sun)","Пальне"],[r.amortCost,"var(--accent)","Амортизація"]].filter(p=>p[0]>0)
     .map(p => `<span title="${p[2]}" style="width:${p[0]/r.total*100}%;background:${p[1]}"></span>`).join("") : "";
   $("#r-break").innerHTML = `
     <dt><i style="background:var(--sun)"></i>${esc(r.fuel)} · ${fmt1.format(r.liters)} л × ${fmt2.format(r.fuelPrice)} грн</dt><dd>${uah(r.fuelCost)}</dd>
     <dt><i style="background:var(--accent)"></i>Амортизація · ${fmt2.format(r.amortPerKm)} грн/км</dt><dd>${uah(r.amortCost)}</dd>
-    <dt><i style="background:var(--muted)"></i>ТО / ремонт · ${fmt2.format(r.repairPerKm)} грн/км</dt><dd>${uah(r.repairCost)}</dd>
     <div class="sep"></div>
     <dt>Разом</dt><dd><b>${uah(r.total)}</b></dd>`;
   const os = num(state.draft.orderSum);
@@ -815,17 +819,17 @@ function renderLog(){
   }
   $("#l-table").innerHTML = `
     <thead><tr><th>Дата</th><th>Клієнт / об'єкт</th><th>Замовлення</th><th>Маршрут</th><th>Машина</th>
-      <th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">ТО / ремонт</th><th class="n">Разом</th><th></th></tr></thead>
+      <th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">Разом</th><th></th></tr></thead>
     <tbody>${rows.map(t => `<tr>
       <td>${fmtDate(t.date)}</td>
       <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}${sheetOn() && !t.synced && !t.remote ? `<div class="pending">не передано в таблицю</div>` : ""}</td>
       <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
-      <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td><td class="n">${fmt0.format(t.repairCost||0)}</td>
+      <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
       <td><button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="5">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
-      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td><td class="n">${fmt0.format(sum("repairCost"))}</td>
+      <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
       <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
 }
 $("#l-month").addEventListener("change", e => { logFilter.month = e.target.value; renderLog(); });
@@ -857,7 +861,7 @@ const COLS = [
   ["date","Дата"],["client","Клієнт/об'єкт"],["order","№ замовлення"],["note","Коментар"],
   ["route","Маршрут"],["addresses","Адреси"],["vehicleName","Машина"],
   ["km","Км",1],["fuel","Вид пального"],["cons","Витрата, л/100 км",1],["liters","Літри",2],["fuelPrice","Ціна пального, грн/л",2],["fuelCost","Пальне, грн",2],
-  ["amortPerKm","Амортизація, грн/км",2],["amortCost","Амортизація, грн",2],["repairPerKm","ТО/ремонт, грн/км",2],["repairCost","ТО/ремонт, грн",2],
+  ["amortPerKm","Амортизація, грн/км",2],["amortCost","Амортизація, грн",2],
   ["total","Разом, грн",2],["perKm","Грн/км",2],["orderSum","Сума замовлення, грн",2],
   ["id","ID рейсу"],["createdAt","Створено"]
 ];
@@ -872,7 +876,7 @@ function tripToRow(t){
 function rowToTrip(r){
   const t = { remote:true, synced:true };
   for (const [k,h,d] of COLS){ const v = r[h] ?? ""; t[k] = d !== undefined ? (v === "" ? (k === "orderSum" ? null : 0) : num(String(v).replace(/\s/g,""))) : String(v); }
-  t.date = normDate(t.date);
+  t.date = normDate(t.date); normTrip(t);
   if (!t.id) t.id = "row-" + Math.random().toString(36).slice(2,9);
   return t;
 }
@@ -978,7 +982,7 @@ $("#gs-copy").addEventListener("click", async e => {
 /* ============ МАШИНЫ ============ */
 const CAR_FIELDS = [
   ["name","Марка і модель","text"],["fuel","Вид пального","fuel"],["cons","Витрата, л/100 км","number"],
-  ["amort","Амортизація, грн/км","number"],["repair","ТО / ремонт, грн/км","number"]
+  ["amort","Амортизація, грн/км","number"]
 ];
 const carField = (v,[k,l,t]) => t === "fuel"
   ? `<label class="f">${l}<select data-k="fuel">${FUELS.map(f => `<option ${f===v.fuel?"selected":""}>${f}</option>`).join("")}</select></label>`
@@ -1003,8 +1007,7 @@ function updateDerived(card){
   card.querySelector("[data-derived]").innerHTML =
     `<span>Пальне <b>${fmt2.format(fuelKm)}</b> грн/км (${esc(v.fuel)} ${fmt2.format(fuelPriceOf(v))} грн/л)</span>
      <span>Амортизація <b>${fmt2.format(amortPerKm(v))}</b> грн/км</span>
-     <span>ТО / ремонт <b>${fmt2.format(num(v.repair))}</b> грн/км</span>
-     <span>Усього <b>${fmt2.format(fuelKm + amortPerKm(v) + num(v.repair))}</b> грн/км</span>`;
+     <span>Усього <b>${fmt2.format(fuelKm + amortPerKm(v))}</b> грн/км</span>`;
 }
 $("#cars").addEventListener("change", e => { if (e.target.dataset.k === "fuel"){ const card = e.target.closest(".vehicle"); vehicleById(card.dataset.id).fuel = e.target.value; persist(); updateDerived(card); } });
 $("#cars").addEventListener("input", e => {
@@ -1045,8 +1048,8 @@ $("#places").addEventListener("click", e => {
 
 /* ============ ЗВІТИ ============ */
 function agg(list){
-  const a = { n:list.length, km:0, liters:0, fuel:0, amort:0, repair:0, total:0 };
-  for (const t of list){ a.km += num(t.km); a.liters += num(t.liters); a.fuel += num(t.fuelCost); a.amort += num(t.amortCost); a.repair += num(t.repairCost); a.total += num(t.total); }
+  const a = { n:list.length, km:0, liters:0, fuel:0, amort:0, total:0 };
+  for (const t of list){ a.km += num(t.km); a.liters += num(t.liters); a.fuel += num(t.fuelCost); a.amort += num(t.amortCost); a.total += num(t.total); }
   return a;
 }
 let repRows = [];
@@ -1076,9 +1079,9 @@ function renderReport(){
   else byMonth(trips).forEach(([m,l]) => { byCar(l).forEach(([c,cl], i) => push(i ? "" : m, c, agg(cl), "row")); push(m, "", agg(l), "subtotal"); });
   if (!trips.length){ $("#rep-table").innerHTML = `<tbody><tr><td class="empty">За вибраний період рейсів немає.</td></tr></tbody>`; return; }
   const showMonth = mode !== "car", showCar = mode !== "month";
-  const cells = a => `<td class="n">${a.n}</td><td class="n">${fmt1.format(a.km)}</td><td class="n">${fmt1.format(a.liters)}</td><td class="n">${fmt0.format(a.fuel)}</td><td class="n">${fmt0.format(a.amort)}</td><td class="n">${fmt0.format(a.repair)}</td><td class="n"><b>${fmt0.format(a.total)}</b></td><td class="n">${a.km ? fmt2.format(a.total/a.km) : "—"}</td>`;
+  const cells = a => `<td class="n">${a.n}</td><td class="n">${fmt1.format(a.km)}</td><td class="n">${fmt1.format(a.liters)}</td><td class="n">${fmt0.format(a.fuel)}</td><td class="n">${fmt0.format(a.amort)}</td><td class="n"><b>${fmt0.format(a.total)}</b></td><td class="n">${a.km ? fmt2.format(a.total/a.km) : "—"}</td>`;
   $("#rep-table").innerHTML = `
-    <thead><tr>${showMonth ? "<th>Місяць</th>" : ""}${showCar ? "<th>Машина</th>" : ""}<th class="n">Рейсів</th><th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">ТО / ремонт</th><th class="n">Разом</th><th class="n">Грн/км</th></tr></thead>
+    <thead><tr>${showMonth ? "<th>Місяць</th>" : ""}${showCar ? "<th>Машина</th>" : ""}<th class="n">Рейсів</th><th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">Разом</th><th class="n">Грн/км</th></tr></thead>
     <tbody>${repRows.map(r => r.kind === "subtotal"
       ? `<tr class="subtotal"><td colspan="2">Разом за ${monthName(r.month)}</td>${cells(r.a)}</tr>`
       : `<tr class="${showMonth && showCar && r.month ? "grp" : ""}">${showMonth ? `<td>${r.month ? monthName(r.month) : ""}</td>` : ""}${showCar ? `<td>${esc(r.car)}</td>` : ""}${cells(r.a)}</tr>`).join("")}</tbody>
@@ -1096,7 +1099,7 @@ $("#rep-xlsx").addEventListener("click", () => {
     if (mode !== "car") o["Місяць"] = r.kind === "subtotal" ? "Разом за " + monthName(r.month) : (r.month ? monthName(r.month) : monthName(lastMonth));
     if (mode !== "month") o["Машина"] = r.car;
     Object.assign(o, { "Рейсів":r.a.n, "Км":round(r.a.km,1), "Літри":round(r.a.liters,1), "Пальне, грн":round(r.a.fuel,2), "Амортизація, грн":round(r.a.amort,2),
-      "ТО/ремонт, грн":round(r.a.repair,2), "Разом, грн":round(r.a.total,2), "Грн/км":r.a.km ? round(r.a.total/r.a.km,2) : "" });
+      "Разом, грн":round(r.a.total,2), "Грн/км":r.a.km ? round(r.a.total/r.a.km,2) : "" });
     return o;
   });
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -1131,6 +1134,7 @@ if (location.hash.startsWith("#gs=")){
   history.replaceState(null, "", location.pathname + location.search);
 }
 $("#gs-url").value = state.sheet.url; $("#gs-key").value = state.sheet.key;
+state.trips.forEach(t => normTrip(t)); if (Array.isArray(remote.trips)) remote.trips.forEach(t => normTrip(t));
 initMap();
 renderAll();
 if (sheetOn()) refreshRemote(true);
