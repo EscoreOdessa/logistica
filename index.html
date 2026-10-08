@@ -256,6 +256,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
           </div>
           <label class="f">Клієнт / об'єкт<input type="text" id="s-client" placeholder="напр. Петренко, СЕС 10 кВт, Чорноморськ"></label>
           <label class="f">Коментар<input type="text" id="s-note" placeholder="що везли"></label>
+          <label class="f">Хто заповнює<input type="text" id="s-author" placeholder="Ваше ім'я" autocomplete="name"></label>
           <label class="f">Сума замовлення, грн <span class="hint">необов'язково — покаже частку доставки в замовленні</span><input type="number" id="c-order-sum" min="0" step="1000"></label>
           <button class="btn primary" type="submit">Зберегти рейс</button>
         </form>
@@ -287,6 +288,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
         <label class="f" style="flex:3 1 280px">Адреса веб-застосунку (URL)<input type="url" id="gs-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
         <label class="f" style="flex:1 1 140px">Ключ <span class="hint">якщо задали в скрипті</span><input type="text" id="gs-key" autocomplete="off"></label>
       </div>
+      <label class="f" style="max-width:360px">Ваше ім'я <span class="hint">видно в журналі біля рейсів, які ви внесли</span><input type="text" id="me-name" autocomplete="name" placeholder="напр. Анна"></label>
       <div class="row">
         <button class="btn primary" id="gs-save" type="button">Підключити</button>
         <button class="btn" id="gs-refresh" type="button">Оновити з таблиці</button>
@@ -305,6 +307,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
           <li>У таблиці: <b>Розширення → Apps Script</b>. Видаліть усе в редакторі.</li>
           <li><button class="btn small" id="gs-copy" type="button">Скопіювати код скрипту</button> і вставте його в редактор, натисніть «Зберегти». Код також лежить у репозиторії: <code>apps-script.gs</code>.</li>
           <li><b>Розгорнути → Нове розгортання</b> → тип «Веб-застосунок». Виконувати як: <b>Я</b>. Хто має доступ: <b>Будь-хто</b>. Натисніть «Розгорнути» і дозвольте доступ до таблиці.</li>
+          <li><b>Якщо скрипт уже був підключений і його треба оновити:</b> вставте новий код, збережіть, потім <b>Deploy → Manage deployments → ✎ (Edit) → Version: New version → Deploy</b>. URL не змінюється.</li>
           <li>Скопіюйте <b>URL веб-застосунку</b> (закінчується на <code>/exec</code>), вставте вище й натисніть «Підключити».</li>
         </ol>
       </details>
@@ -531,7 +534,9 @@ state.sheet ||= { url:"", key:"" };
 if (state.baseLocked === undefined) state.baseLocked = false;
 /* підставити зафіксований склад у точку */
 function fillBase(stop){ if (!state.base || !hasCoords(state.base)) return false; Object.assign(stop, { addr:state.base.addr, lat:state.base.lat, lon:state.base.lon, approx:false }); return true; }
-const persist = () => store.save(state);
+state.me ||= { id:uid(), name:"" };
+state.syncAt ||= {}; state.pushed ||= {};
+const persist = () => { store.save(state); scheduleSync(); };
 
 /* ============ РАСЧЁТ ============ */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
@@ -916,13 +921,17 @@ $("#save-form").addEventListener("submit", e => {
   const legs = state.draft.legs.map((l,i) => ({ from:stops[i].label, to:stops[i+1].label, km:num(l.km), manual:!!l.manual }));
   const r = calcTrip(v, legs);
   if (!r.km){ toast("Немає кілометражу — вкажіть точки або введіть км"); return; }
+  const who = $("#s-author").value.trim();
+  if (!who){ toast("Вкажіть, хто заповнює рейс"); $("#s-author").focus(); return; }
+  if (who !== state.me.name){ state.me.name = who; $("#me-name").value = who; }
   state.trips.push({
     id:uid(), date:$("#s-date").value || today(), createdAt:new Date().toISOString(),
     client:$("#s-client").value.trim(), order:$("#s-order").value.trim(), note:$("#s-note").value.trim(),
     vehicleId:v.id, vehicleName:v.name,
     route:stops.map(s => s.label).join(" → "),
     addresses:stops.map(s => s.addr).join(" → "),
-    stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r, synced:false
+    stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r, synced:false,
+    author:state.me.name || "", device:state.me.id
   });
   // запомнить адреса
   for (const s of stops) if (hasCoords(s) && s.addr){
@@ -976,17 +985,17 @@ function renderLog(){
     return;
   }
   $("#l-table").innerHTML = `
-    <thead><tr><th>Дата</th><th>Клієнт / об'єкт</th><th>Замовлення</th><th>Маршрут</th><th>Машина</th>
+    <thead><tr><th>Дата</th><th>Клієнт / об'єкт</th><th>Замовлення</th><th>Маршрут</th><th>Машина</th><th>Хто</th>
       <th class="n">Км</th><th class="n">Літри</th><th class="n">Пальне, грн</th><th class="n">Амортиз.</th><th class="n">Разом</th><th></th></tr></thead>
     <tbody>${rows.map(t => `<tr>
       <td>${fmtDate(t.date)}</td>
       <td>${esc(t.client)}${t.note?`<div class="sub">${esc(t.note)}</div>`:""}${sheetOn() && !t.synced && !t.remote ? `<div class="pending">не передано в таблицю</div>` : ""}</td>
-      <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td>
+      <td>${esc(t.order)}</td><td class="sub" title="${esc(t.addresses||"")}">${esc(t.route)}</td><td>${esc(t.vehicleName)}</td><td>${whoCell(t)}</td>
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
       <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
       <td style="white-space:nowrap"><button class="btn small" data-waybill="${t.id}" title="Подорожній лист за цей день і машину">Лист</button> <button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="5">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
+    <tfoot><tr><td colspan="6">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
       <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
       <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
 }
@@ -1012,6 +1021,11 @@ $("#l-table").addEventListener("click", e => {
   });
 });
 
+function whoCell(t){
+  const mine = t.device && t.device === state.me.id;
+  const name = t.author || (t.device ? "" : "—");
+  return `${esc(name)}${mine ? ` <span class="chip" title="Внесено з цього пристрою">цей пристрій</span>` : (t.device ? ` <span class="sub" title="Внесено з іншого пристрою">інший пристрій</span>` : "")}`;
+}
 /* ============ ЭКСПОРТ ============
    Плоские строки с понятными колонками — подходят для импорта
    в любую учётную систему (1С/BAS, Dilovod, Odoo и т. п.). */
@@ -1023,7 +1037,7 @@ const COLS = [
   ["km","Км",1],["fuel","Вид пального"],["cons","Витрата, л/100 км",1],["liters","Літри",2],["fuelPrice","Ціна пального, грн/л",2],["fuelCost","Пальне, грн",2],
   ["amortPerKm","Амортизація, грн/км",2],["amortCost","Амортизація, грн",2],
   ["total","Разом, грн",2],["perKm","Грн/км",2],["orderSum","Сума замовлення, грн",2],
-  ["id","ID рейсу"],["createdAt","Створено"]
+  ["id","ID рейсу"],["createdAt","Створено"],["author","Хто заповнив"],["device","ID пристрою"]
 ];
 function tripToRow(t){
   const r = {};
@@ -1074,6 +1088,66 @@ async function sheetCall(body){
   if (!d.ok) throw new Error(d.error || "помилка таблиці");
   return d;
 }
+/* ---- спільні налаштування та подорожні листи ----
+   Кожен елемент має ключ: vehicle:<id>, fuelPrices, base, company, wb:<дата|машина>.
+   Новіша зміна (за часом) перемагає; машина-приклад «Фургон (приклад)» не надсилається. */
+const SAMPLE_CAR = "Фургон (приклад)";
+let pulledOnce = false, syncTimer = null;
+function syncItems(){
+  const items = {};
+  for (const v of state.vehicles) if (v.name !== SAMPLE_CAR) items["vehicle:" + v.id] = v;
+  items.fuelPrices = state.fuelPrices;
+  if (state.base) items.base = { ...state.base, locked:!!state.baseLocked };
+  if (state.company && Object.values(state.company).some(Boolean)) items.company = state.company;
+  for (const [k, w] of Object.entries(state.waybills || {})) items["wb:" + k] = w;
+  return items;
+}
+function scheduleSync(){ try { if (!sheetOn() || !pulledOnce) return; } catch { return; } clearTimeout(syncTimer); syncTimer = setTimeout(() => syncPush().catch(() => {}), 1500); }
+async function syncPush(){
+  if (!sheetOn() || !pulledOnce) return;
+  const items = syncItems(), now = Date.now(), send = [], deleted = [];
+  for (const [k, v] of Object.entries(items)){
+    const js = JSON.stringify(v);
+    if (state.pushed[k] !== js){ send.push({ key:k, value:v, at:now, by:state.me.name || "" }); }
+  }
+  for (const k of Object.keys(state.pushed)) if (!(k in items) && (k.startsWith("vehicle:"))) deleted.push(k);
+  if (!send.length && !deleted.length) return;
+  await sheetCall({ action:"sync", items:send, deleted });
+  for (const it of send){ state.pushed[it.key] = JSON.stringify(it.value); state.syncAt[it.key] = now; }
+  for (const k of deleted){ delete state.pushed[k]; delete state.syncAt[k]; }
+  store.save(state);
+}
+function applyItems(items){
+  if (!Array.isArray(items)) return false;
+  let changed = false;
+  const remoteKeys = new Set(items.map(i => i.key));
+  for (const it of items){
+    const js = JSON.stringify(it.value);
+    if ((state.syncAt[it.key] || 0) >= it.at && state.pushed[it.key] !== undefined) continue;   // у нас новіше або те саме
+    const localDirty = state.pushed[it.key] !== undefined && localJSON(it.key) !== state.pushed[it.key];
+    if (localDirty && (state.syncAt[it.key] || 0) > it.at) continue;
+    if (it.key.startsWith("vehicle:")){
+      const id = it.key.slice(8), i = state.vehicles.findIndex(v => v.id === id);
+      if (i >= 0) state.vehicles[i] = { ...it.value }; else state.vehicles.push({ ...it.value });
+    } else if (it.key === "fuelPrices") state.fuelPrices = { ...it.value };
+    else if (it.key === "base"){ const { locked, ...b } = it.value || {}; state.base = b; state.baseLocked = !!locked; }
+    else if (it.key === "company") state.company = { ...it.value };
+    else if (it.key.startsWith("wb:")){ state.waybills ||= {}; state.waybills[it.key.slice(3)] = { ...it.value }; }
+    state.pushed[it.key] = js; state.syncAt[it.key] = it.at; changed = true;
+  }
+  // машини, видалені іншими
+  for (const k of Object.keys(state.pushed)) if (k.startsWith("vehicle:") && !remoteKeys.has(k)){
+    state.vehicles = state.vehicles.filter(v => "vehicle:" + v.id !== k); delete state.pushed[k]; delete state.syncAt[k]; changed = true;
+  }
+  // приклад-машина зникає, коли в таблиці вже є справжні
+  if (state.vehicles.some(v => v.name !== SAMPLE_CAR) && state.vehicles.some(v => v.name === SAMPLE_CAR)){
+    state.vehicles = state.vehicles.filter(v => v.name !== SAMPLE_CAR); changed = true;
+  }
+  if (!state.vehicles.length){ const v = defaultVehicle(); state.vehicles.push(v); }
+  if (!state.vehicles.some(v => v.id === state.activeVehicle)) state.activeVehicle = state.vehicles[0].id;
+  return changed;
+}
+function localJSON(k){ const it = syncItems(); return k in it ? JSON.stringify(it[k]) : undefined; }
 async function refreshRemote(silent){
   if (!sheetOn() || remote.busy) return;
   remote.busy = true; renderSheetStatus();
@@ -1081,6 +1155,12 @@ async function refreshRemote(silent){
     await pushPending(true);
     const d = await sheetCall({ action:"list" });
     remote.trips = d.rows.map(rowToTrip); remote.at = new Date(); remote.error = null;
+    remote.oldScript = !Array.isArray(d.items);
+    if (!remote.oldScript){
+      const changed = applyItems(d.items); pulledOnce = true;
+      if (changed){ store.save(state); renderVehicleSelect(); renderFuel(); renderResult(); if (!$("#tab-cars").hidden) renderCars(); }
+      await syncPush();
+    }
     try { localStorage.setItem(STORAGE_KEY + ".remote", JSON.stringify(remote.trips)); } catch {}
   } catch(e){ remote.error = e.message; if (!silent) toast("Таблиця: " + e.message); }
   remote.busy = false;
@@ -1103,7 +1183,8 @@ function renderSheetStatus(){
   if (!sheetOn()) html = `<span><span class="dot"></span>Журнал лише в цьому браузері</span>`;
   else if (remote.busy) html = `<span><span class="dot warn"></span>Синхронізація…</span>`;
   else if (remote.error) html = `<span><span class="dot err"></span>Помилка: ${esc(remote.error)}</span>`;
-  else html = `<span><span class="dot on"></span>Підключено${remote.at ? " · оновлено о " + remote.at.toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"}) : ""}</span>`;
+  else if (remote.oldScript) html = `<span><span class="dot warn"></span>Журнал підключено, але машини й подорожні листи не синхронізуються — оновіть скрипт таблиці (див. інструкцію нижче)</span>`;
+  else html = `<span><span class="dot on"></span>Підключено · журнал, машини й подорожні листи спільні${remote.at ? " · оновлено о " + remote.at.toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"}) : ""}</span>`;
   if (sheetOn() && pend) html += `<span class="pending">не передано: ${pend}</span>`;
   el.innerHTML = html;
   $("#gs-push").hidden = !(sheetOn() && pend);
@@ -1237,7 +1318,7 @@ function wbCalc(){
 }
 $("#wb-overlay").addEventListener("input", e => {
   const k = e.target.dataset.w; if (!k || !wbKey) return;
-  state.waybills[wbKey][k] = e.target.value; persist(); wbCalc();
+  state.waybills[wbKey][k] = e.target.value; state.waybills[wbKey].by = state.me.name || ""; persist(); wbCalc();
   $("#wb-saved").textContent = "Збережено";
 });
 $("#wb-overlay").addEventListener("click", e => {
@@ -1409,7 +1490,12 @@ state.gkey ||= ""; $("#gm-key").value = state.gkey; renderMapsStatus(); initGoog
 state.trips.forEach(t => normTrip(t)); if (Array.isArray(remote.trips)) remote.trips.forEach(t => normTrip(t));
 initMap();
 renderAll();
+$("#me-name").value = state.me.name || ""; $("#s-author").value = state.me.name || "";
+$("#me-name").addEventListener("input", e => { state.me.name = e.target.value.trim(); $("#s-author").value = state.me.name; store.save(state); });
 if (sheetOn()) refreshRemote(true);
+/* оновлення з таблиці кожні 60 с, поки сторінка відкрита, і при поверненні на вкладку */
+setInterval(() => { if (sheetOn() && !document.hidden && $("#wb-overlay").hidden) refreshRemote(true); }, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && sheetOn() && (!remote.at || Date.now() - remote.at > 20000)) refreshRemote(true); });
 let startTab = "calc"; try { startTab = localStorage.getItem(STORAGE_KEY + ".tab") || "calc"; } catch {}
 showTab(startTab);
 </script>

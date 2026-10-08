@@ -40,11 +40,19 @@ function doPost(e) {
 
     if (d.action === 'list') {
       const v = sh.getDataRange().getDisplayValues();
-      if (v.length < 2) return out_({ ok: true, rows: [] });
-      const h = v[0];
-      const rows = v.slice(1).filter(r => r.join('') !== '')
-        .map(r => { const o = {}; h.forEach((k, i) => o[k] = r[i]); return o; });
-      return out_({ ok: true, rows: rows });
+      let rows = [];
+      if (v.length >= 2) {
+        const h = v[0];
+        rows = v.slice(1).filter(r => r.join('') !== '')
+          .map(r => { const o = {}; h.forEach((k, i) => o[k] = r[i]); return o; });
+      }
+      return out_({ ok: true, rows: rows, items: listItems_(), v: 2 });
+    }
+
+    if (d.action === 'sync') {
+      (d.items || []).forEach(it => upsertItem_(it));
+      (d.deleted || []).forEach(k => deleteItem_(k));
+      return out_({ ok: true });
     }
 
     if (d.action === 'add') {
@@ -117,4 +125,69 @@ function cleanupRepair() {
   }
   sh.getRange(2, col('Разом, грн'), n, 1).setValues(tot);
   sh.getRange(2, col('Грн/км'), n, 1).setValues(per);
+}
+
+
+/* ===== Спільні налаштування (машини, ціни, склад, підприємство) і подорожні листи ===== */
+const SET_SHEET = 'Налаштування';
+const WB_SHEET = 'Подорожні листи';
+const SET_HEAD = ['Ключ', 'Значення (JSON)', 'Оновлено', 'Ким'];
+const WB_HEAD = ['Ключ', 'Дата', 'Машина', '№ листа', 'Водій', 'Держ. номер', 'Спідометр виїзд', 'Спідометр повернення',
+  'Пальне виїзд', 'Заправлено', 'Чек №', 'Пальне повернення', 'Механік', 'Медпрацівник', 'Бухгалтер', 'Оновлено', 'Ким', 'JSON'];
+function kvSheet_(name, head) {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function findRow_(sh, key) {
+  if (sh.getLastRow() < 2) return 0;
+  const keys = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
+  for (let i = 0; i < keys.length; i++) if (keys[i][0] === key) return i + 2;
+  return 0;
+}
+function upsertItem_(it) {
+  if (!it || !it.key) return;
+  const isWb = String(it.key).indexOf('wb:') === 0;
+  const sh = isWb ? kvSheet_(WB_SHEET, WB_HEAD) : kvSheet_(SET_SHEET, SET_HEAD);
+  const row = findRow_(sh, it.key);
+  if (row) {   // новіший запис перемагає
+    const atCol = isWb ? 16 : 3;
+    const prev = Number(sh.getRange(row, atCol).getValue()) || 0;
+    if (prev > Number(it.at || 0)) return;
+  }
+  const json = JSON.stringify(it.value);
+  let vals;
+  if (isWb) {
+    const w = it.value || {}, parts = String(it.key).slice(3).split('|');
+    vals = [it.key, parts[0] || '', parts[1] || '', w.no || '', w.driver || '', w.plate || '', w.odoOut || '', w.odoIn || '',
+      w.fuelOut || '', w.fueled || '', w.receipt || '', w.fuelIn || '', w.mechanic || '', w.medic || '', w.accountant || '',
+      Number(it.at || 0), it.by || '', json];
+  } else {
+    vals = [it.key, json, Number(it.at || 0), it.by || ''];
+  }
+  const r = row || sh.getLastRow() + 1;
+  sh.getRange(r, 1, 1, vals.length).setNumberFormats([vals.map(v => typeof v === 'number' ? '0' : '@')]).setValues([vals]);
+}
+function deleteItem_(key) {
+  [kvSheet_(SET_SHEET, SET_HEAD), kvSheet_(WB_SHEET, WB_HEAD)].forEach(sh => {
+    const row = findRow_(sh, key);
+    if (row) sh.deleteRow(row);
+  });
+}
+function listItems_() {
+  const items = [];
+  [[SET_SHEET, SET_HEAD, 1, 2, 3], [WB_SHEET, WB_HEAD, 17, 15, 16]].forEach(([name, head, jsonIdx, atIdx, byIdx]) => {
+    const sh = kvSheet_(name, head);
+    if (sh.getLastRow() < 2) return;
+    sh.getRange(2, 1, sh.getLastRow() - 1, head.length).getDisplayValues().forEach(r => {
+      if (!r[0]) return;
+      try { items.push({ key: r[0], value: JSON.parse(r[jsonIdx]), at: Number(r[atIdx]) || 0, by: r[byIdx] }); } catch (e) {}
+    });
+  });
+  return items;
 }
