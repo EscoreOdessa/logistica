@@ -90,3 +90,31 @@ function doPost(e) {
     lock.releaseLock();
   }
 }
+
+/**
+ * Разове прибирання ТО/ремонту (запустити вручну один раз:
+ * вибрати cleanupRepair у списку функцій угорі → Run).
+ * Видаляє колонки «ТО/ремонт…» і перераховує «Разом, грн» = пальне + амортизація та «Грн/км».
+ */
+function cleanupRepair() {
+  const sh = sheet_();
+  let h = headers_(sh);
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (/^ТО\/ремонт/.test(h[i])) sh.deleteColumn(i + 1);
+  }
+  h = headers_(sh);
+  const n = sh.getLastRow() - 1;
+  if (n < 1) return;
+  const col = k => h.indexOf(k) + 1;
+  const km = sh.getRange(2, col('Км'), n, 1).getValues();
+  const fuel = sh.getRange(2, col('Пальне, грн'), n, 1).getValues();
+  const am = sh.getRange(2, col('Амортизація, грн'), n, 1).getValues();
+  const tot = [], per = [];
+  for (let i = 0; i < n; i++) {
+    const t = Math.round((Number(fuel[i][0]) + Number(am[i][0])) * 100) / 100;
+    tot.push([t]);
+    per.push([Number(km[i][0]) ? Math.round(t / Number(km[i][0]) * 100) / 100 : '']);
+  }
+  sh.getRange(2, col('Разом, грн'), n, 1).setValues(tot);
+  sh.getRange(2, col('Грн/км'), n, 1).setValues(per);
+}
