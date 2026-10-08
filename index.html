@@ -304,6 +304,31 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
       <button class="btn primary" id="add-car">+ Машина</button>
     </div>
     <div class="vehicles" id="cars"></div>
+    <div class="card stack" id="gm-card">
+      <div class="toolbar">
+        <h2 style="margin:0">Google Maps</h2>
+        <div class="syncbar" id="gm-status"></div>
+      </div>
+      <p class="note" style="margin:0">З ключем Google пошук адрес і кілометраж рахуються через Google (точніше за номерами будинків). Без ключа працює OpenStreetMap.</p>
+      <div class="row">
+        <label class="f" style="flex:3 1 280px">API-ключ Google Maps<input type="text" id="gm-key" autocomplete="off" placeholder="AIza…"></label>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="gm-save" type="button">Зберегти ключ</button>
+        <button class="btn ghost" id="gm-off" type="button" hidden>Відключити Google</button>
+      </div>
+      <details class="how">
+        <summary>Як отримати ключ (один раз)</summary>
+        <ol>
+          <li>Відкрийте <b>console.cloud.google.com</b> і створіть проєкт (наприклад, «logistica»).</li>
+          <li><b>Billing</b> → прив'яжіть картку (без неї Google не видає ключ; у межах безкоштовного ліміту списань немає).</li>
+          <li><b>APIs &amp; Services → Library</b> → увімкніть: <b>Maps JavaScript API</b>, <b>Places API (New)</b>, <b>Routes API</b>, <b>Geocoding API</b>.</li>
+          <li><b>APIs &amp; Services → Credentials → Create credentials → API key</b>.</li>
+          <li>У налаштуваннях ключа: <b>Application restrictions → Websites</b> → додайте <code>https://escoreodessa.github.io/*</code>; <b>API restrictions</b> → виберіть ці 4 API. Збережіть.</li>
+          <li>Скопіюйте ключ і вставте вище.</li>
+        </ol>
+      </details>
+    </div>
     <div class="card stack">
       <h2 style="margin:0">Збережені адреси</h2>
       <p class="sub" style="margin:0">Адреси зі збережених рейсів з'являються тут і першими підказуються під час введення. Точка з назвою «Склад» підставляється автоматично.</p>
@@ -331,6 +356,74 @@ const MAP = {
   photon:"https://photon.komoot.io/api/",
   nominatim:"https://nominatim.openstreetmap.org/"
 };
+
+/* ============ GOOGLE MAPS (якщо задано ключ) ============ */
+const GOOGLE = { ready:false, failed:false, err:"", lib:{} };
+const useGoogle = () => GOOGLE.ready && !GOOGLE.failed;
+window.gm_authFailure = () => { GOOGLE.failed = true; GOOGLE.err = "ключ відхилено Google (перевірте обмеження ключа та увімкнені API)"; try { renderMapsStatus(); } catch {} toast("Google Maps: " + GOOGLE.err + ". Працює OpenStreetMap."); };
+function loadGoogleLoader(key){
+  /* офіційний завантажувач Maps JavaScript API */
+  (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({ key, v:"weekly", language:"uk", region:"UA" });
+}
+async function initGoogle(){
+  if (!state.gkey) return;
+  try {
+    loadGoogleLoader(state.gkey);
+    const [places, routes, geocoding] = await Promise.all([google.maps.importLibrary("places"), google.maps.importLibrary("routes"), google.maps.importLibrary("geocoding")]);
+    GOOGLE.lib = { ...places, ...routes, ...geocoding };
+    GOOGLE.geocoder = new GOOGLE.lib.Geocoder();
+    GOOGLE.ready = true;
+  } catch(e){ GOOGLE.failed = true; GOOGLE.err = e.message || "не завантажився"; }
+  renderMapsStatus();
+  if (useGoogle()) scheduleRouting();
+}
+const stripCountry = t => String(t || "").replace(/,\s*(Україна|Ukraine)(,\s*\d{5})?\s*$/i, "").replace(/,\s*\d{5}\s*$/, "");
+let gToken = null;
+async function googleSuggest(q){
+  const { AutocompleteSuggestion, AutocompleteSessionToken } = GOOGLE.lib;
+  gToken ||= new AutocompleteSessionToken();
+  const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+    input:q, sessionToken:gToken, language:"uk", region:"ua",
+    locationBias:{ center:{ lat:MAP.center[0], lng:MAP.center[1] }, radius:50000 }
+  });
+  return suggestions.filter(x => x.placePrediction).map(x => {
+    const pp = x.placePrediction, types = pp.types || [];
+    const exact = types.some(t => ["street_address","premise","subpremise","establishment","point_of_interest"].includes(t));
+    return { google:true, prediction:pp, main:pp.mainText?.text || pp.text.text, sub:stripCountry(pp.secondaryText?.text || ""),
+             full:stripCountry(pp.text.text), house: exact || !types.includes("route") };
+  });
+}
+async function resolveGoogle(r){
+  const place = r.prediction.toPlace();
+  await place.fetchFields({ fields:["location","formattedAddress"] });
+  gToken = null;
+  return { lat:place.location.lat(), lon:place.location.lng(), addr:r.full || stripCountry(place.formattedAddress) };
+}
+async function googleReverse(lat, lon){
+  const { results } = await GOOGLE.geocoder.geocode({ location:{ lat, lng:lon }, language:"uk" });
+  if (!results?.length) throw new Error("немає адреси");
+  return stripCountry(results[0].formatted_address);
+}
+async function googleRoute(stops){
+  const { Route } = GOOGLE.lib;
+  const pt = s => ({ lat:s.lat, lng:s.lon });
+  const { routes } = await Route.computeRoutes({
+    origin:pt(stops[0]), destination:pt(stops[stops.length-1]),
+    intermediates:stops.slice(1,-1).map(s => ({ location:pt(s) })),
+    travelMode:"DRIVING", fields:["distanceMeters","durationMillis","legs","path"]
+  });
+  if (!routes?.length) throw new Error("маршрут не знайдено");
+  const rt = routes[0], v = x => typeof x === "function" ? x() : x;
+  return { legs:(rt.legs||[]).map(l => l.distanceMeters || 0), distance:rt.distanceMeters || 0, duration:(rt.durationMillis || 0)/1000,
+           path:(rt.path || []).map(p => [v(p.lat), v(p.lng)]), source:"Google" };
+}
+function renderMapsStatus(){
+  const el = document.getElementById("gm-status"); if (!el) return;
+  el.innerHTML = !state.gkey ? `<span><span class="dot"></span>Не підключено — працює OpenStreetMap</span>`
+    : GOOGLE.failed ? `<span><span class="dot err"></span>Помилка: ${esc(GOOGLE.err)}. Працює OpenStreetMap</span>`
+    : GOOGLE.ready ? `<span><span class="dot on"></span>Google Maps працює</span>` : `<span><span class="dot warn"></span>Завантаження…</span>`;
+  $("#gm-off").hidden = !state.gkey;
+}
 
 /* =====================================================================
    ХРАНИЛИЩЕ — сейчас localStorage браузера. Чтобы перейти на общую базу
@@ -463,6 +556,9 @@ async function photonSearch(q, signal){
 async function geocode(q, signal){
   const m = q.match(/^\s*(-?\d{1,2}[.,]\d+)\s*[,; ]\s*(-?\d{1,3}[.,]\d+)\s*$/);   // «46.48, 30.72»
   if (m){ const lat = num(m[1]), lon = num(m[2]); return [{ main:`${lat.toFixed(5)}, ${lon.toFixed(5)}`, sub:"координати", lat, lon }]; }
+  if (useGoogle()){
+    try { const g = await googleSuggest(q); if (g.length) return g; } catch(e){ console.warn("Google autocomplete:", e); }
+  }
   const uq = ukrainize(q);
   const queries = uq !== q ? [uq, q] : [q];   // если написано по-русски — ищем оба варианта
   let merged = [];
@@ -486,6 +582,7 @@ function shortAddr(x){
   return [street, place].filter(Boolean).join(", ");
 }
 async function reverseGeocode(lat, lon){
+  if (useGoogle()){ try { return await googleReverse(lat, lon); } catch(e){ console.warn("Google geocode:", e); } }
   try {
     const r = await fetch(`${MAP.nominatim}reverse?format=jsonv2&accept-language=uk&zoom=18&lat=${lat}&lon=${lon}`);
     if (!r.ok) throw 0;
@@ -567,25 +664,37 @@ async function buildRoute(){
   if (missing.length){ setStatus(`Не вказано адресу точки ${missing.join(", ")}. Поки що можна ввести кілометри вручну.`); fitAll(); return; }
   routeAbort?.abort(); routeAbort = new AbortController();
   setStatus("Будую маршрут…");
+  const signal = routeAbort.signal;
   try {
-    const coords = stops.map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
-    const r = await fetch(`${MAP.routing}${coords}?overview=full&geometries=geojson`, { signal:routeAbort.signal });
-    const d = await r.json();
-    if (d.code !== "Ok" || !d.routes?.length) throw new Error(d.message || d.code);
-    const rt = d.routes[0];
-    rt.legs.forEach((lg,i) => { const leg = state.draft.legs[i]; if (leg && !leg.manual) leg.auto = leg.km = Math.round(lg.distance/100)/10; else if (leg) leg.auto = Math.round(lg.distance/100)/10; });
+    let rt = null, note = "";
+    if (useGoogle()){
+      try { rt = await googleRoute(stops); }
+      catch(e){ console.warn("Google route:", e); note = " (Google недоступний — розраховано OpenStreetMap)"; }
+    }
+    if (!rt) rt = await osrmRoute(stops, signal);
+    if (signal.aborted) return;
+    rt.legs.forEach((m,i) => { const leg = state.draft.legs[i]; const km = Math.round(m/100)/10; if (leg && !leg.manual) leg.auto = leg.km = km; else if (leg) leg.auto = km; });
     persist();
     if (map){
-      routeLine = L.geoJSON(rt.geometry, { style:{ color:getComputedStyle(document.documentElement).getPropertyValue("--route").trim() || "#2563c9", weight:5, opacity:.8 } }).addTo(map);
+      if (routeLine) routeLine.remove();
+      routeLine = L.polyline(rt.path, { color:getComputedStyle(document.documentElement).getPropertyValue("--route").trim() || "#2563c9", weight:5, opacity:.8 }).addTo(map);
       fitAll();
     }
     const h = Math.floor(rt.duration/3600), m = Math.round(rt.duration%3600/60);
-    setStatus(`Маршрут дорогами: ${fmt1.format(rt.distance/1000)} км · у дорозі близько ${h ? h+" год " : ""}${m} хв.`, "ok");
+    setStatus(`Маршрут дорогами: ${fmt1.format(rt.distance/1000)} км · у дорозі близько ${h ? h+" год " : ""}${m} хв · ${rt.source}${note}`, "ok");
     renderRoute(); renderResult();
   } catch(e){
     if (e.name === "AbortError") return;
     setStatus("Не вдалося побудувати маршрут (сервіс недоступний). Введіть кілометри вручну або спробуйте пізніше.", "err");
   }
+}
+async function osrmRoute(stops, signal){
+  const coords = stops.map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
+  const r = await fetch(`${MAP.routing}${coords}?overview=full&geometries=geojson`, { signal });
+  const d = await r.json();
+  if (d.code !== "Ok" || !d.routes?.length) throw new Error(d.message || d.code);
+  const rt = d.routes[0];
+  return { legs:rt.legs.map(l => l.distance), distance:rt.distance, duration:rt.duration, path:rt.geometry.coordinates.map(c => [c[1], c[0]]), source:"OpenStreetMap" };
 }
 
 /* ============ СПИСОК ТОЧЕК ============ */
@@ -615,6 +724,14 @@ function renderRoute(){
   if (pickIndex !== null) setPick(pickIndex < stops.length ? pickIndex : null);
 }
 
+async function pickResult(i, r){
+  document.querySelectorAll(".sugg").forEach(b => b.hidden = true);
+  if (r.google){
+    try { const g = await resolveGoogle(r); return placeStop(i, g.lat, g.lon, r.approx ? r.query : g.addr, false, r.approx); }
+    catch(e){ toast("Не вдалося отримати координати адреси: " + e.message); return; }
+  }
+  return placeStop(i, r.lat, r.lon, r.approx ? r.query : r.main, false, r.approx);
+}
 /* ввод в полях точек и участков */
 let suggTimer = null, suggAbort = null;
 $("#route").addEventListener("input", e => {
@@ -650,13 +767,13 @@ $("#route").addEventListener("click", e => {
   if (pick){ const i = +pick.dataset.pick; setPick(pickIndex === i ? null : i); }
   if (del){ removeStop(+del.dataset.delstop); }
   if (auto){ const l = state.draft.legs[+auto.dataset.auto]; l.manual = false; l.km = l.auto; persist(); renderRoute(); renderResult(); }
-  if (sg){ const i = +sg.closest(".stop").dataset.i, r = suggResults[+sg.dataset.sugg]; if (r) placeStop(i, r.lat, r.lon, r.approx ? r.query : r.main, false, r.approx); }
+  if (sg){ const i = +sg.closest(".stop").dataset.i, r = suggResults[+sg.dataset.sugg]; if (r) pickResult(i, r); }
 });
 $("#route").addEventListener("mousedown", e => { if (e.target.closest(".sugg")) e.preventDefault(); });
 $("#route").addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.dataset.k === "addr"){
     e.preventDefault(); const i = +e.target.closest(".stop").dataset.i;
-    const r = suggResults[0]; if (r) placeStop(i, r.lat, r.lon, r.approx ? r.query : r.main, false, r.approx);
+    const r = suggResults[0]; if (r) pickResult(i, r);
   }
   if (e.key === "Escape") document.querySelectorAll(".sugg").forEach(s => s.hidden = true);
 });
@@ -959,8 +1076,14 @@ $("#gs-save").addEventListener("click", async () => {
   await refreshRemote(false);
   if (!remote.error) toast("Google-таблицю підключено");
 });
+$("#gm-save").addEventListener("click", () => {
+  const k = $("#gm-key").value.trim();
+  if (!/^AIza[\w-]{20,}$/.test(k)){ toast("Це не схоже на ключ Google Maps (починається з AIza…)"); return; }
+  state.gkey = k; persist(); toast("Ключ збережено — перезавантажую сторінку"); setTimeout(() => location.reload(), 700);
+});
+$("#gm-off").addEventListener("click", e => armDelete(e.currentTarget, "Точно відключити?", () => { state.gkey = ""; persist(); location.reload(); }));
 $("#gs-share").addEventListener("click", async () => {
-  const link = `${location.origin}${location.pathname}#gs=${encodeURIComponent(state.sheet.url)}${state.sheet.key ? "&k=" + encodeURIComponent(state.sheet.key) : ""}`;
+  const link = `${location.origin}${location.pathname}#gs=${encodeURIComponent(state.sheet.url)}${state.sheet.key ? "&k=" + encodeURIComponent(state.sheet.key) : ""}${state.gkey ? "&gm=" + encodeURIComponent(state.gkey) : ""}`;
   $("#gs-share-link").value = link; $("#gs-share-box").hidden = false;
   try { await navigator.clipboard.writeText(link); toast("Посилання скопійовано — надішліть його колегам"); }
   catch { $("#gs-share-link").select(); }
@@ -1128,12 +1251,14 @@ function renderAll(){
 }
 try { const c = JSON.parse(localStorage.getItem(STORAGE_KEY + ".remote")); if (Array.isArray(c)) remote.trips = c; } catch {}
 /* посилання від колеги: #gs=<URL>&k=<ключ> — підключає таблицю й прибирає параметри з адреси */
-if (location.hash.startsWith("#gs=")){
-  const h = new URLSearchParams(location.hash.slice(1)), u = h.get("gs") || "";
+if (/^#(gs|gm)=/.test(location.hash)){
+  const h = new URLSearchParams(location.hash.slice(1)), u = h.get("gs") || "", gm = h.get("gm") || "";
   if (/^https:\/\/script\.google(usercontent)?\.com\//.test(u)){ state.sheet = { url:u, key:h.get("k") || "" }; persist(); setTimeout(() => toast("Google-таблицю підключено"), 300); }
+  if (/^AIza[\w-]{20,}$/.test(gm)){ state.gkey = gm; persist(); }
   history.replaceState(null, "", location.pathname + location.search);
 }
 $("#gs-url").value = state.sheet.url; $("#gs-key").value = state.sheet.key;
+state.gkey ||= ""; $("#gm-key").value = state.gkey; renderMapsStatus(); initGoogle();
 state.trips.forEach(t => normTrip(t)); if (Array.isArray(remote.trips)) remote.trips.forEach(t => normTrip(t));
 initMap();
 renderAll();
