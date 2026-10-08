@@ -304,6 +304,14 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
       <button class="btn primary" id="add-car">+ Машина</button>
     </div>
     <div class="vehicles" id="cars"></div>
+    <div class="card stack" id="co-card">
+      <h2 style="margin:0">Підприємство (для подорожнього листа)</h2>
+      <div class="row">
+        <label class="f" style="flex:2 1 260px">Назва<input type="text" id="co-name" data-co="name" placeholder="ТОВ «…» / ФОП …"></label>
+        <label class="f">Код ЄДРПОУ / ІПН<input type="text" id="co-code" data-co="code"></label>
+      </div>
+      <label class="f">Адреса<input type="text" id="co-addr" data-co="addr"></label>
+    </div>
     <div class="card stack" id="gm-card">
       <div class="toolbar">
         <h2 style="margin:0">Google Maps</h2>
@@ -944,7 +952,7 @@ function renderLog(){
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
       <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
-      <td><button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
+      <td style="white-space:nowrap"><button class="btn small" data-waybill="${t.id}" title="Подорожній лист за цей день і машину">Лист</button> <button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="5">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
       <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
       <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
@@ -957,6 +965,8 @@ function armDelete(b, label, done){
   setTimeout(() => { if (b.isConnected){ delete b.dataset.armed; b.textContent = prev; b.classList.remove("danger"); } }, 3000);
 }
 $("#l-table").addEventListener("click", e => {
+  const wb = e.target.closest("[data-waybill]");
+  if (wb){ const t = journalTrips().find(x => x.id === wb.dataset.waybill); if (t) openWaybill(t.date, t.vehicleName); return; }
   const b = e.target.closest("[data-deltrip]"); if (!b) return;
   armDelete(b, "Видалити?", async () => {
     const id = b.dataset.deltrip;
@@ -1102,15 +1112,103 @@ $("#gs-copy").addEventListener("click", async e => {
   } catch { window.open("https://github.com/EscoreOdessa/logistica/blob/main/apps-script.gs", "_blank"); }
 });
 
+/* ============ ПОДОРОЖНІЙ ЛИСТ ============
+   Чернетка форми для погодження з бухгалтерією: усі рейси машини за день,
+   норма пального з калькулятора, порожні поля — для заповнення вручну. */
+function waybillHTML(date, carName){
+  const trips = journalTrips().filter(t => t.date === date && t.vehicleName === carName)
+    .sort((a,b) => (a.createdAt||"").localeCompare(b.createdAt||""));
+  const v = state.vehicles.find(x => x.name === carName) || {};
+  const co = state.company || {};
+  const km = trips.reduce((a,t) => a + num(t.km), 0);
+  const cons = num(trips[0]?.cons ?? v.cons);
+  const norm = trips.reduce((a,t) => a + num(t.liters), 0) || km * cons / 100;
+  const fuel = trips[0]?.fuel || v.fuel || "";
+  const blank = (w=160) => `<span class="blank" style="min-width:${w}px"></span>`;
+  const val = (x, w) => x ? `<b>${esc(x)}</b>` : blank(w);
+  const f1 = n => fmt1.format(n), f2 = n => fmt2.format(n);
+  const rows = trips.map((t,i) => {
+    const addrs = String(t.addresses || "").split(" → "), labels = String(t.route || "").split(" → ");
+    const route = addrs.map((a,j) => `${esc(labels[j] || "")}${labels[j] && a ? ": " : ""}${esc(a)}`).join("<br>→ ");
+    const goal = [t.client, t.order ? "зам. № " + t.order : "", t.note].filter(Boolean).map(esc).join("; ");
+    return `<tr><td class="c">${i+1}</td><td>${route || esc(t.route)}</td><td>${goal}</td><td class="n">${f1(num(t.km))}</td></tr>`;
+  }).join("");
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Подорожній лист ${fmtDate(date)} ${esc(carName)}</title>
+<style>
+@page{size:A4;margin:14mm}
+*{box-sizing:border-box}
+body{font:12px/1.45 "Times New Roman",Times,serif;color:#000;margin:0;padding:16px;background:#fff}
+.sheet{max-width:780px;margin:0 auto}
+h1{font-size:17px;text-align:center;margin:6px 0 2px;letter-spacing:.04em}
+.sub{text-align:center;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:8px 0}
+.blank{display:inline-block;border-bottom:1px solid #000;height:14px;vertical-align:bottom}
+table{width:100%;border-collapse:collapse;margin:6px 0 10px}
+th,td{border:1px solid #000;padding:4px 6px;vertical-align:top}
+th{font-weight:bold;text-align:center;background:#f2f2f2}
+td.n{text-align:right;white-space:nowrap} td.c{text-align:center}
+h2{font-size:13px;margin:12px 0 4px}
+.sign td{border:none;padding:8px 6px 2px}
+.sign .line{border-bottom:1px solid #000;height:18px}
+.small{font-size:10px;color:#333;text-align:center}
+.note{font-size:10px;color:#444;margin-top:12px;border-top:1px dashed #999;padding-top:6px}
+.bar{position:sticky;top:0;background:#fff;padding:8px 0;text-align:right}
+.bar button{font:14px system-ui;padding:6px 14px;cursor:pointer}
+@media print{.bar{display:none}body{padding:0}}
+</style></head><body><div class="sheet">
+<div class="bar"><button onclick="window.print()">Друк / зберегти PDF</button></div>
+<div>${val(co.name, 300)}${co.code ? `, код ЄДРПОУ/ІПН <b>${esc(co.code)}</b>` : ""}${co.addr ? `<br>${esc(co.addr)}` : ""}</div>
+<h1>ПОДОРОЖНІЙ ЛИСТ № ${blank(70)}</h1>
+<div class="sub">від <b>${fmtDate(date)}</b></div>
+<div class="grid">
+  <div>Автомобіль: ${val(carName,180)}</div><div>Держ. номер: ${val(v.plate,120)}</div>
+  <div>Водій: ${val(v.driver,200)}</div><div>Посвідчення водія №: ${val(v.license,120)}</div>
+  <div>Вид пального: <b>${esc(fuel)}</b></div><div>Норма витрати: <b>${f1(cons)}</b> л/100 км</div>
+</div>
+<h2>Робота автомобіля</h2>
+<table><tr><th></th><th>Час</th><th>Показання спідометра, км</th></tr>
+<tr><td>Виїзд з гаража</td><td></td><td></td></tr>
+<tr><td>Повернення в гараж</td><td></td><td></td></tr>
+<tr><td>Пробіг за спідометром</td><td></td><td></td></tr></table>
+<h2>Маршрут</h2>
+<table><tr><th style="width:28px">№</th><th>Маршрут (звідки → куди)</th><th style="width:32%">Мета поїздки (клієнт, замовлення)</th><th style="width:80px">Км (за картою)</th></tr>
+${rows || `<tr><td colspan="4" class="c">Рейсів немає</td></tr>`}
+<tr><td></td><td colspan="2"><b>Разом пробіг за маршрутом</b></td><td class="n"><b>${f1(km)}</b></td></tr></table>
+<h2>Рух пального, л</h2>
+<table><tr><th>Залишок при виїзді</th><th>Заправлено (чек №)</th><th>Залишок при поверненні</th><th>Витрата фактична</th><th>Витрата за нормою</th><th>Економія (+) / перевитрата (−)</th></tr>
+<tr><td style="height:26px"></td><td></td><td></td><td></td><td class="n"><b>${f2(norm)}</b></td><td></td></tr></table>
+<div class="small">Витрата фактична = залишок при виїзді + заправлено − залишок при поверненні. Витрата за нормою = пробіг × ${f1(cons)} / 100.</div>
+<h2>Відмітки та підписи</h2>
+<table class="sign">
+<tr><td style="width:46%">Автомобіль технічно справний, виїзд дозволено. Механік</td><td><div class="line"></div></td><td style="width:22%"><div class="line"></div></td></tr>
+<tr><td>Водій за станом здоров'я до роботи допущений. Медпрацівник</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
+<tr><td>Автомобіль прийняв (водій)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
+<tr><td>Автомобіль після повернення здав (водій)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
+<tr><td>Автомобіль прийняв (механік)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
+<tr><td>Подорожній лист обробив (бухгалтер)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
+<tr><td></td><td class="small">ПІБ</td><td class="small">підпис</td></tr>
+</table>
+<div class="note">Форма затверджена наказом про облікову політику № ____ від ____________. Маршрут і кілометраж сформовано калькулятором доставки за даними журналу рейсів.</div>
+</div></body></html>`;
+}
+function openWaybill(date, carName){
+  const w = window.open("", "_blank");
+  if (!w){ toast("Браузер заблокував нове вікно — дозвольте спливаючі вікна для цього сайту"); return; }
+  w.document.open(); w.document.write(waybillHTML(date, carName)); w.document.close();
+}
+
 /* ============ МАШИНЫ ============ */
 const CAR_FIELDS = [
   ["name","Марка і модель","text"],["fuel","Вид пального","fuel"],["cons","Витрата, л/100 км","number"],
-  ["amort","Амортизація, грн/км","number"]
+  ["amort","Амортизація, грн/км","number"],
+  ["plate","Держ. номер","text"],["driver","Водій (ПІБ)","text"],["license","Посвідчення водія №","text"]
 ];
 const carField = (v,[k,l,t]) => t === "fuel"
   ? `<label class="f">${l}<select data-k="fuel">${FUELS.map(f => `<option ${f===v.fuel?"selected":""}>${f}</option>`).join("")}</select></label>`
   : `<label class="f">${l}<input type="${t}" data-k="${k}" ${t==="number"?'min="0" step="any"':""} value="${esc(v[k])}"></label>`;
-function renderCars(){
+document.querySelectorAll("[data-co]").forEach(inp => inp.addEventListener("input", () => { state.company ||= {}; state.company[inp.dataset.co] = inp.value.trim(); persist(); }));
+function renderCompany(){ const c = state.company || {}; document.querySelectorAll("[data-co]").forEach(inp => { if (document.activeElement !== inp) inp.value = c[inp.dataset.co] || ""; }); }
+function renderCars(){ renderCompany();
   $("#cars").innerHTML = state.vehicles.map(v => `
     <div class="card stack vehicle ${v.id===state.activeVehicle?"active":""}" data-id="${v.id}">
       <div class="toolbar">
