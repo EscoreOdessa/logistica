@@ -44,8 +44,8 @@ nav.tabs button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
 .stack{display:flex;flex-direction:column;gap:16px}
 .row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0;flex:1 1 140px}
-.stack>label.f{flex:0 0 auto}
+label.f,div.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0;flex:1 1 140px}
+.stack>label.f,.stack>div.f{flex:0 0 auto}
 label.f span.hint{font-size:12px}
 input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
 input[type=number]{font-family:var(--font-num);font-variant-numeric:tabular-nums}
@@ -219,7 +219,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
         <form class="card stack" id="save-form">
           <h3 style="margin:0">Записати в журнал</h3>
           <div class="row">
-            <label class="f">Дата<input type="date" id="s-date" required></label>
+            <div class="f"><label for="s-date">Дата</label><input type="date" id="s-date" required></div>
             <label class="f">№ замовлення<input type="text" id="s-order" placeholder="напр. 2026-145"></label>
           </div>
           <label class="f">Клієнт / об'єкт<input type="text" id="s-client" placeholder="напр. Петренко, СЕС 10 кВт, Чорноморськ"></label>
@@ -283,8 +283,8 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
   <section class="panel stack" id="tab-rep" hidden>
     <div class="toolbar">
       <div class="rep-controls">
-        <label class="f">З місяця<input type="month" id="rep-from" placeholder="2026-09"></label>
-        <label class="f">По місяць<input type="month" id="rep-to" placeholder="2026-10"></label>
+        <div class="f"><label for="rep-from">З місяця</label><input type="month" id="rep-from" placeholder="2026-09"></div>
+        <div class="f"><label for="rep-to">По місяць</label><input type="month" id="rep-to" placeholder="2026-10"></div>
         <label class="f" style="flex:0 1 220px">Розріз<select id="rep-mode">
           <option value="month">По місяцях</option>
           <option value="car">По машинах</option>
