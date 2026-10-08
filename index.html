@@ -153,6 +153,38 @@ tr.grp td:first-child{font-weight:600}
 .derived{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .derived b{font-family:var(--font-num);color:var(--fg)}
 .places td{white-space:normal}
+/* подорожній лист: вікно поверх сторінки, друкується лише воно */
+#wb-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.45);overflow:auto;padding:16px}
+.wb-bar{max-width:820px;margin:0 auto 10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.wb-bar .saved{color:#fff;font-size:13px;margin-right:auto}
+.wb{max-width:820px;margin:0 auto;background:#fff;color:#000;padding:28px 34px;font:12.5px/1.45 "Times New Roman",Times,serif;border-radius:6px}
+.wb h1{font-size:17px;text-align:center;margin:8px 0 2px;letter-spacing:.04em}
+.wb .sub{text-align:center;margin-bottom:12px}
+.wb .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin:8px 0}
+.wb h2{font-size:13px;margin:12px 0 4px;color:#000}
+.wb table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:12.5px}
+.wb th,.wb td{border:1px solid #000;padding:4px 6px;vertical-align:top;white-space:normal;color:#000;background:#fff}
+.wb th{font-weight:bold;text-align:center;background:#f2f2f2;text-transform:none;letter-spacing:0;font-size:12px}
+.wb td.n{text-align:right;white-space:nowrap;font-family:inherit} .wb td.c{text-align:center}
+.wb input.wbi{font:inherit;color:#000;background:#fffbe6;border:0;border-bottom:1px solid #000;border-radius:0;padding:1px 3px;width:100%;min-width:0}
+.wb td input.wbi{border-bottom:0;background:#fffbe6}
+.wb input.wbi.num{text-align:right;font-family:inherit}
+.wb .inl{display:inline-block;width:auto;min-width:120px}
+.wb .calc{font-weight:bold}
+.wb .sign td{border:none;padding:6px 6px 2px}
+.wb .small{font-size:10px;color:#333;text-align:center}
+.wb .wb-note{font-size:10px;color:#444;margin-top:12px;border-top:1px dashed #999;padding-top:6px}
+@media (max-width:600px){.wb{padding:16px;overflow-x:auto}.wb .grid2{grid-template-columns:1fr}}
+@media print{
+  @page{size:A4;margin:12mm}
+  body{padding:0;background:#fff}
+  body > *:not(#wb-overlay){display:none!important}
+  #wb-overlay{position:static;background:none;padding:0;overflow:visible}
+  .wb-bar{display:none}
+  .wb{padding:0;max-width:none;border-radius:0}
+  .wb input.wbi,.wb td input.wbi{background:none!important;outline:none!important}
+  .wb input.wbi::placeholder{color:transparent}
+}
 .syncbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--line);margin-right:6px}
 .dot.on{background:var(--accent)} .dot.warn{background:var(--sun)} .dot.err{background:var(--danger)}
@@ -344,6 +376,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
     </div>
   </section>
 </div>
+<div id="wb-overlay" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1113,89 +1146,105 @@ $("#gs-copy").addEventListener("click", async e => {
 });
 
 /* ============ ПОДОРОЖНІЙ ЛИСТ ============
-   Чернетка форми для погодження з бухгалтерією: усі рейси машини за день,
-   норма пального з калькулятора, порожні поля — для заповнення вручну. */
-function waybillHTML(date, carName){
-  const trips = journalTrips().filter(t => t.date === date && t.vehicleName === carName)
-    .sort((a,b) => (a.createdAt||"").localeCompare(b.createdAt||""));
+   Усі рейси машини за день + поля для заповнення (спідометр, пальне, підписи).
+   Введене зберігається в браузері за ключем «дата|машина»; спідометр і залишок
+   пального при виїзді підставляються з попереднього листа цієї машини. */
+let wbKey = null;
+const wbKeyOf = (date, car) => date + "|" + car;
+function wbPrev(date, car){
+  const prev = Object.entries(state.waybills || {})
+    .filter(([k]) => k.endsWith("|" + car) && k.split("|")[0] < date)
+    .sort((a,b) => b[0].localeCompare(a[0]))[0];
+  return prev ? prev[1] : null;
+}
+function openWaybill(date, carName){
+  state.waybills ||= {};
+  wbKey = wbKeyOf(date, carName);
+  if (!state.waybills[wbKey]){
+    const p = wbPrev(date, carName), v = state.vehicles.find(x => x.name === carName) || {};
+    const nums = Object.values(state.waybills).map(w => parseInt(w.no)).filter(n => n > 0);
+    state.waybills[wbKey] = { no: nums.length ? String(Math.max(...nums) + 1) : "", odoOut: p?.odoIn || "", fuelOut: p?.fuelIn || "",
+      driver: v.driver || "", plate: v.plate || "", license: v.license || "" };
+  }
+  const trips = journalTrips().filter(t => t.date === date && t.vehicleName === carName).sort((a,b) => (a.createdAt||"").localeCompare(b.createdAt||""));
   const v = state.vehicles.find(x => x.name === carName) || {};
-  const co = state.company || {};
+  const co = state.company || {}, w = state.waybills[wbKey];
   const km = trips.reduce((a,t) => a + num(t.km), 0);
   const cons = num(trips[0]?.cons ?? v.cons);
   const norm = trips.reduce((a,t) => a + num(t.liters), 0) || km * cons / 100;
   const fuel = trips[0]?.fuel || v.fuel || "";
-  const blank = (w=160) => `<span class="blank" style="min-width:${w}px"></span>`;
-  const val = (x, w) => x ? `<b>${esc(x)}</b>` : blank(w);
-  const f1 = n => fmt1.format(n), f2 = n => fmt2.format(n);
+  const inp = (k, cls="", ph="") => `<input class="wbi ${cls}" data-w="${k}" value="${esc(w[k] || "")}" placeholder="${ph}" autocomplete="off">`;
   const rows = trips.map((t,i) => {
     const addrs = String(t.addresses || "").split(" → "), labels = String(t.route || "").split(" → ");
     const route = addrs.map((a,j) => `${esc(labels[j] || "")}${labels[j] && a ? ": " : ""}${esc(a)}`).join("<br>→ ");
     const goal = [t.client, t.order ? "зам. № " + t.order : "", t.note].filter(Boolean).map(esc).join("; ");
-    return `<tr><td class="c">${i+1}</td><td>${route || esc(t.route)}</td><td>${goal}</td><td class="n">${f1(num(t.km))}</td></tr>`;
+    return `<tr><td class="c">${i+1}</td><td>${route || esc(t.route)}</td><td>${goal}</td><td class="n">${fmt1.format(num(t.km))}</td></tr>`;
   }).join("");
-  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Подорожній лист ${fmtDate(date)} ${esc(carName)}</title>
-<style>
-@page{size:A4;margin:14mm}
-*{box-sizing:border-box}
-body{font:12px/1.45 "Times New Roman",Times,serif;color:#000;margin:0;padding:16px;background:#fff}
-.sheet{max-width:780px;margin:0 auto}
-h1{font-size:17px;text-align:center;margin:6px 0 2px;letter-spacing:.04em}
-.sub{text-align:center;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:8px 0}
-.blank{display:inline-block;border-bottom:1px solid #000;height:14px;vertical-align:bottom}
-table{width:100%;border-collapse:collapse;margin:6px 0 10px}
-th,td{border:1px solid #000;padding:4px 6px;vertical-align:top}
-th{font-weight:bold;text-align:center;background:#f2f2f2}
-td.n{text-align:right;white-space:nowrap} td.c{text-align:center}
-h2{font-size:13px;margin:12px 0 4px}
-.sign td{border:none;padding:8px 6px 2px}
-.sign .line{border-bottom:1px solid #000;height:18px}
-.small{font-size:10px;color:#333;text-align:center}
-.note{font-size:10px;color:#444;margin-top:12px;border-top:1px dashed #999;padding-top:6px}
-.bar{position:sticky;top:0;background:#fff;padding:8px 0;text-align:right}
-.bar button{font:14px system-ui;padding:6px 14px;cursor:pointer}
-@media print{.bar{display:none}body{padding:0}}
-</style></head><body><div class="sheet">
-<div class="bar"><button onclick="window.print()">Друк / зберегти PDF</button></div>
-<div>${val(co.name, 300)}${co.code ? `, код ЄДРПОУ/ІПН <b>${esc(co.code)}</b>` : ""}${co.addr ? `<br>${esc(co.addr)}` : ""}</div>
-<h1>ПОДОРОЖНІЙ ЛИСТ № ${blank(70)}</h1>
-<div class="sub">від <b>${fmtDate(date)}</b></div>
-<div class="grid">
-  <div>Автомобіль: ${val(carName,180)}</div><div>Держ. номер: ${val(v.plate,120)}</div>
-  <div>Водій: ${val(v.driver,200)}</div><div>Посвідчення водія №: ${val(v.license,120)}</div>
-  <div>Вид пального: <b>${esc(fuel)}</b></div><div>Норма витрати: <b>${f1(cons)}</b> л/100 км</div>
-</div>
-<h2>Робота автомобіля</h2>
-<table><tr><th></th><th>Час</th><th>Показання спідометра, км</th></tr>
-<tr><td>Виїзд з гаража</td><td></td><td></td></tr>
-<tr><td>Повернення в гараж</td><td></td><td></td></tr>
-<tr><td>Пробіг за спідометром</td><td></td><td></td></tr></table>
-<h2>Маршрут</h2>
-<table><tr><th style="width:28px">№</th><th>Маршрут (звідки → куди)</th><th style="width:32%">Мета поїздки (клієнт, замовлення)</th><th style="width:80px">Км (за картою)</th></tr>
-${rows || `<tr><td colspan="4" class="c">Рейсів немає</td></tr>`}
-<tr><td></td><td colspan="2"><b>Разом пробіг за маршрутом</b></td><td class="n"><b>${f1(km)}</b></td></tr></table>
-<h2>Рух пального, л</h2>
-<table><tr><th>Залишок при виїзді</th><th>Заправлено (чек №)</th><th>Залишок при поверненні</th><th>Витрата фактична</th><th>Витрата за нормою</th><th>Економія (+) / перевитрата (−)</th></tr>
-<tr><td style="height:26px"></td><td></td><td></td><td></td><td class="n"><b>${f2(norm)}</b></td><td></td></tr></table>
-<div class="small">Витрата фактична = залишок при виїзді + заправлено − залишок при поверненні. Витрата за нормою = пробіг × ${f1(cons)} / 100.</div>
-<h2>Відмітки та підписи</h2>
-<table class="sign">
-<tr><td style="width:46%">Автомобіль технічно справний, виїзд дозволено. Механік</td><td><div class="line"></div></td><td style="width:22%"><div class="line"></div></td></tr>
-<tr><td>Водій за станом здоров'я до роботи допущений. Медпрацівник</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
-<tr><td>Автомобіль прийняв (водій)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
-<tr><td>Автомобіль після повернення здав (водій)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
-<tr><td>Автомобіль прийняв (механік)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
-<tr><td>Подорожній лист обробив (бухгалтер)</td><td><div class="line"></div></td><td><div class="line"></div></td></tr>
-<tr><td></td><td class="small">ПІБ</td><td class="small">підпис</td></tr>
-</table>
-<div class="note">Форма затверджена наказом про облікову політику № ____ від ____________. Маршрут і кілометраж сформовано калькулятором доставки за даними журналу рейсів.</div>
-</div></body></html>`;
+  $("#wb-overlay").innerHTML = `
+  <div class="wb-bar"><span class="saved" id="wb-saved">Зміни зберігаються автоматично</span>
+    <button class="btn" type="button" id="wb-print">Друк / зберегти PDF</button>
+    <button class="btn" type="button" id="wb-close">Закрити</button></div>
+  <div class="wb" data-norm="${norm}">
+    <div>${co.name ? `<b>${esc(co.name)}</b>` : `<span style="color:#b00">Назву підприємства вкажіть у «Машини та адреси»</span>`}${co.code ? `, код ЄДРПОУ/ІПН <b>${esc(co.code)}</b>` : ""}${co.addr ? `<br>${esc(co.addr)}` : ""}</div>
+    <h1>ПОДОРОЖНІЙ ЛИСТ № <input class="wbi inl" style="min-width:70px;width:90px" data-w="no" value="${esc(w.no || "")}"></h1>
+    <div class="sub">від <b>${fmtDate(date)}</b></div>
+    <div class="grid2">
+      <div>Автомобіль: <b>${esc(carName)}</b></div><div>Держ. номер: ${inp("plate","inl")}</div>
+      <div>Водій: ${inp("driver","inl","ПІБ")}</div><div>Посвідчення водія №: ${inp("license","inl")}</div>
+      <div>Вид пального: <b>${esc(fuel)}</b></div><div>Норма витрати: <b>${fmt1.format(cons)}</b> л/100 км</div>
+    </div>
+    <h2>Робота автомобіля</h2>
+    <table><tr><th></th><th style="width:22%">Час</th><th style="width:34%">Показання спідометра, км</th></tr>
+      <tr><td>Виїзд з гаража</td><td>${inp("timeOut","","08:00")}</td><td>${inp("odoOut","num")}</td></tr>
+      <tr><td>Повернення в гараж</td><td>${inp("timeIn","","18:00")}</td><td>${inp("odoIn","num")}</td></tr>
+      <tr><td>Пробіг за спідометром</td><td></td><td class="n calc" id="wb-odo">—</td></tr></table>
+    <h2>Маршрут</h2>
+    <table><tr><th style="width:28px">№</th><th>Маршрут (звідки → куди)</th><th style="width:32%">Мета поїздки (клієнт, замовлення)</th><th style="width:80px">Км (за картою)</th></tr>
+      ${rows || `<tr><td colspan="4" class="c">Рейсів немає</td></tr>`}
+      <tr><td></td><td colspan="2"><b>Разом пробіг за маршрутом</b></td><td class="n"><b>${fmt1.format(km)}</b></td></tr></table>
+    <h2>Рух пального, л</h2>
+    <table><tr><th>Залишок при виїзді</th><th>Заправлено</th><th>Чек №</th><th>Залишок при поверненні</th><th>Витрата фактична</th><th>Витрата за нормою</th><th>Економія (+) / перевитрата (−)</th></tr>
+      <tr><td>${inp("fuelOut","num")}</td><td>${inp("fueled","num")}</td><td>${inp("receipt")}</td><td>${inp("fuelIn","num")}</td>
+          <td class="n calc" id="wb-fact">—</td><td class="n"><b>${fmt2.format(norm)}</b></td><td class="n calc" id="wb-diff">—</td></tr></table>
+    <div class="small">Витрата фактична = залишок при виїзді + заправлено − залишок при поверненні. Витрата за нормою = пробіг × ${fmt1.format(cons)} / 100.</div>
+    <h2>Відмітки та підписи</h2>
+    <table class="sign">
+      <tr><td style="width:46%">Автомобіль технічно справний, виїзд дозволено. Механік</td><td>${inp("mechanic","","ПІБ")}</td><td style="width:20%"><div style="border-bottom:1px solid #000;height:18px"></div></td></tr>
+      <tr><td>Водій за станом здоров'я до роботи допущений. Медпрацівник</td><td>${inp("medic","","ПІБ")}</td><td><div style="border-bottom:1px solid #000;height:18px"></div></td></tr>
+      <tr><td>Автомобіль прийняв / після повернення здав (водій)</td><td><span id="wb-drv">${esc(w.driver || "")}</span></td><td><div style="border-bottom:1px solid #000;height:18px"></div></td></tr>
+      <tr><td>Автомобіль прийняв (механік)</td><td><span id="wb-mech">${esc(w.mechanic || "")}</span></td><td><div style="border-bottom:1px solid #000;height:18px"></div></td></tr>
+      <tr><td>Подорожній лист обробив (бухгалтер)</td><td>${inp("accountant","","ПІБ")}</td><td><div style="border-bottom:1px solid #000;height:18px"></div></td></tr>
+      <tr><td></td><td class="small">ПІБ</td><td class="small">підпис</td></tr>
+    </table>
+    <div class="wb-note">Форма затверджена наказом про облікову політику № ____ від ____________. Маршрут і кілометраж сформовано калькулятором доставки за даними журналу рейсів.</div>
+  </div>`;
+  $("#wb-overlay").hidden = false;
+  document.body.style.overflow = "hidden";
+  wbCalc();
 }
-function openWaybill(date, carName){
-  const w = window.open("", "_blank");
-  if (!w){ toast("Браузер заблокував нове вікно — дозвольте спливаючі вікна для цього сайту"); return; }
-  w.document.open(); w.document.write(waybillHTML(date, carName)); w.document.close();
+function wbCalc(){
+  const w = state.waybills[wbKey] || {}, norm = num($(".wb")?.dataset.norm);
+  const has = k => String(w[k] ?? "").trim() !== "";
+  const f2 = n => fmt2.format(n);
+  $("#wb-odo").textContent = has("odoOut") && has("odoIn") ? fmt1.format(num(w.odoIn) - num(w.odoOut)) : "—";
+  if (has("fuelOut") && has("fuelIn")){
+    const fact = num(w.fuelOut) + num(w.fueled) - num(w.fuelIn), d = norm - fact;
+    $("#wb-fact").textContent = f2(fact);
+    $("#wb-diff").textContent = (d >= 0 ? "+" : "−") + f2(Math.abs(d));
+    $("#wb-diff").style.color = d >= 0 ? "#1a6b2a" : "#b00";
+  } else { $("#wb-fact").textContent = "—"; $("#wb-diff").textContent = "—"; }
+  $("#wb-drv").textContent = w.driver || ""; $("#wb-mech").textContent = w.mechanic || "";
 }
+$("#wb-overlay").addEventListener("input", e => {
+  const k = e.target.dataset.w; if (!k || !wbKey) return;
+  state.waybills[wbKey][k] = e.target.value; persist(); wbCalc();
+  $("#wb-saved").textContent = "Збережено";
+});
+$("#wb-overlay").addEventListener("click", e => {
+  if (e.target.id === "wb-print") window.print();
+  if (e.target.id === "wb-close" || e.target.id === "wb-overlay"){ $("#wb-overlay").hidden = true; document.body.style.overflow = ""; wbKey = null; }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#wb-overlay").hidden){ $("#wb-overlay").hidden = true; document.body.style.overflow = ""; wbKey = null; } });
 
 /* ============ МАШИНЫ ============ */
 const CAR_FIELDS = [
