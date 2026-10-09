@@ -153,6 +153,7 @@ tr.grp td:first-child{font-weight:600}
 .derived{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .derived b{font-family:var(--font-num);color:var(--fg)}
 .places td{white-space:normal}
+.editbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:var(--sun);color:#1d2219;border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600}
 /* подорожній лист: вікно поверх сторінки, друкується лише воно */
 #wb-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.45);overflow:auto;padding:16px}
 .wb-bar{max-width:820px;margin:0 auto 10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
@@ -249,7 +250,8 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
         </div>
 
         <form class="card stack" id="save-form">
-          <h3 style="margin:0">Записати в журнал</h3>
+          <div class="editbar" id="edit-bar" hidden><span id="edit-text"></span><button class="btn small" type="button" id="edit-cancel">Скасувати редагування</button></div>
+          <h3 style="margin:0" id="save-title">Записати в журнал</h3>
           <div class="row">
             <div class="f"><label for="s-date">Дата</label><input type="date" id="s-date" required></div>
             <label class="f">№ замовлення<input type="text" id="s-order" placeholder="напр. 2026-145"></label>
@@ -258,7 +260,7 @@ details.how code{font-family:var(--font-num);font-size:12px;background:var(--sur
           <label class="f">Коментар<input type="text" id="s-note" placeholder="що везли"></label>
           <label class="f">Хто заповнює<input type="text" id="s-author" placeholder="Ваше ім'я" autocomplete="name"></label>
           <label class="f">Сума замовлення, грн <span class="hint">необов'язково — покаже частку доставки в замовленні</span><input type="number" id="c-order-sum" min="0" step="1000"></label>
-          <button class="btn primary" type="submit">Зберегти рейс</button>
+          <button class="btn primary" type="submit" id="save-btn">Зберегти рейс</button>
         </form>
       </div>
     </div>
@@ -914,6 +916,51 @@ function renderResult(){
 }
 
 $("#s-date").value = today();
+/* ============ РЕДАГУВАННЯ РЕЙСУ ============
+   Рейс завантажується в калькулятор: точки, кілометраж, дані форми.
+   Кілометраж старого рейсу зберігається як «вручну» — поруч видно, скільки за картою. */
+let editTrip = null, draftBeforeEdit = null;
+function startEdit(t){
+  editTrip = { id:t.id, createdAt:t.createdAt, author:t.author, device:t.device, wasSynced:!!(t.remote || t.synced), date:t.date };
+  draftBeforeEdit = JSON.parse(JSON.stringify(state.draft));
+  let stops, legs;
+  if (Array.isArray(t.stops) && t.stops.length > 1){
+    stops = t.stops.map(s => ({ label:s.label || "", addr:s.addr || "", lat:s.lat ?? null, lon:s.lon ?? null }));
+    legs = stops.slice(1).map((_, i) => ({ km:num(t.legs?.[i]?.km), manual:true }));
+  } else {
+    const labels = String(t.route || "").split(" → "), addrs = String(t.addresses || "").split(" → ");
+    const n = Math.max(labels.length, addrs.length, 2);
+    stops = Array.from({ length:n }, (_, i) => ({ label:labels[i] || "", addr:addrs[i] || "", lat:null, lon:null }));
+    legs = stops.slice(1).map((_, i) => ({ km: i === 0 ? num(t.km) : 0, manual:true }));
+  }
+  state.draft.stops = stops; state.draft.legs = legs; state.draft.orderSum = t.orderSum ?? "";
+  const v = state.vehicles.find(x => x.name === t.vehicleName); if (v) state.activeVehicle = v.id;
+  $("#s-date").value = t.date || today(); $("#s-order").value = t.order || ""; $("#s-client").value = t.client || "";
+  $("#s-note").value = t.note || ""; $("#c-order-sum").value = t.orderSum ?? "";
+  $("#edit-text").textContent = `Редагування рейсу від ${fmtDate(t.date)}${t.client ? " · " + t.client : ""}`;
+  $("#edit-bar").hidden = false; $("#save-title").textContent = "Зміни рейсу"; $("#save-btn").textContent = "Зберегти зміни";
+  showTab("calc"); renderVehicleSelect(); renderFuel(); renderRoute(); drawMarkers(); renderResult();
+  window.scrollTo({ top:0, behavior:"smooth" });
+  toast("Рейс відкрито для редагування: змініть точки чи кілометраж і натисніть «Зберегти зміни»");
+  // точки без координат — шукаємо за адресою, щоб показати маршрут і км за картою
+  (async () => {
+    for (const s of state.draft.stops){
+      if (hasCoords(s) || !s.addr || !editTrip) continue;
+      try { const r = (await geocode(s.addr))[0]; if (r){ const g = r.google ? await resolveGoogle(r) : r; s.lat = g.lat; s.lon = g.lon; } } catch {}
+    }
+    if (editTrip){ persist(); renderRoute(); drawMarkers(); scheduleRouting(); }
+  })();
+}
+function endEdit(restore){
+  editTrip = null;
+  if (restore && draftBeforeEdit) state.draft = draftBeforeEdit;
+  draftBeforeEdit = null;
+  $("#edit-bar").hidden = true; $("#save-title").textContent = "Записати в журнал"; $("#save-btn").textContent = "Зберегти рейс";
+  $("#s-date").value = today(); ["#s-order","#s-client","#s-note","#c-order-sum"].forEach(x => $(x).value = "");
+  persist(); renderVehicleSelect(); renderFuel(); renderRoute(); drawMarkers(); renderResult(); scheduleRouting();
+}
+$("#edit-cancel").addEventListener("click", () => { endEdit(true); toast("Редагування скасовано"); });
+
 $("#save-form").addEventListener("submit", e => {
   e.preventDefault();
   const v = activeVehicle();
@@ -924,14 +971,20 @@ $("#save-form").addEventListener("submit", e => {
   const who = $("#s-author").value.trim();
   if (!who){ toast("Вкажіть, хто заповнює рейс"); $("#s-author").focus(); return; }
   if (who !== state.me.name){ state.me.name = who; $("#me-name").value = who; }
+  const editing = editTrip;
+  if (editing){
+    state.trips = state.trips.filter(x => x.id !== editing.id);
+    if (remote.trips) remote.trips = remote.trips.filter(x => x.id !== editing.id);
+  }
   state.trips.push({
-    id:uid(), date:$("#s-date").value || today(), createdAt:new Date().toISOString(),
+    id:editing ? editing.id : uid(), date:$("#s-date").value || today(), createdAt:editing ? editing.createdAt : new Date().toISOString(),
     client:$("#s-client").value.trim(), order:$("#s-order").value.trim(), note:$("#s-note").value.trim(),
     vehicleId:v.id, vehicleName:v.name,
     route:stops.map(s => s.label).join(" → "),
     addresses:stops.map(s => s.addr).join(" → "),
     stops:stops.map(s => ({ ...s })), legs, orderSum:num(state.draft.orderSum) || null, ...r, synced:false,
-    author:state.me.name || "", device:state.me.id
+    author:editing ? (editing.author || state.me.name || "") : (state.me.name || ""), device:editing ? editing.device : state.me.id,
+    ...(editing ? { editedBy:state.me.name || "", editedAt:new Date().toISOString(), replace:editing.wasSynced } : {})
   });
   // запомнить адреса
   for (const s of stops) if (hasCoords(s) && s.addr){
@@ -942,11 +995,12 @@ $("#save-form").addEventListener("submit", e => {
   persist();
   $("#s-client").value = ""; $("#s-order").value = ""; $("#s-note").value = "";
   $("#c-order-sum").value = ""; state.draft.orderSum = ""; persist(); renderResult();
+  if (editing){ endEdit(true); }
   if (sheetOn()){
-    toast(`Рейс збережено: ${uah(r.total)} · надсилаю в таблицю…`);
+    toast(`${editing ? "Зміни збережено" : "Рейс збережено"}: ${uah(r.total)} · надсилаю в таблицю…`);
     pushPending(true).then(n => { toast("Рейс записано в Google-таблицю"); refreshRemote(true); })
       .catch(err => { toast("Рейс збережено в браузері, у таблицю не передано: " + err.message); renderSheetStatus(); });
-  } else toast(`Рейс збережено: ${uah(r.total)}`);
+  } else toast(`${editing ? "Зміни збережено" : "Рейс збережено"}: ${uah(r.total)}`);
 });
 
 /* ============ ЖУРНАЛ ============ */
@@ -994,7 +1048,7 @@ function renderLog(){
       <td class="n">${fmt1.format(t.km)}</td><td class="n">${fmt1.format(t.liters)}</td>
       <td class="n">${fmt0.format(t.fuelCost)}</td><td class="n">${fmt0.format(t.amortCost)}</td>
       <td class="n"><b>${fmt0.format(t.total)}</b></td>
-      <td style="white-space:nowrap"><button class="btn small" data-waybill="${t.id}" title="Подорожній лист за цей день і машину">Лист</button> <button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
+      <td style="white-space:nowrap"><button class="btn small" data-edit="${t.id}" title="Змінити рейс: точки, кілометраж, дані">Змінити</button> <button class="btn small" data-waybill="${t.id}" title="Подорожній лист за цей день і машину">Лист</button> <button class="btn ghost" data-deltrip="${t.id}" title="Видалити рейс">✕</button></td></tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="6">Разом</td><td class="n">${fmt1.format(km)}</td><td class="n">${fmt1.format(sum("liters"))}</td>
       <td class="n">${fmt0.format(sum("fuelCost"))}</td><td class="n">${fmt0.format(sum("amortCost"))}</td>
       <td class="n">${fmt0.format(tot)}</td><td></td></tr></tfoot>`;
@@ -1007,6 +1061,8 @@ function armDelete(b, label, done){
   setTimeout(() => { if (b.isConnected){ delete b.dataset.armed; b.textContent = prev; b.classList.remove("danger"); } }, 3000);
 }
 $("#l-table").addEventListener("click", e => {
+  const ed = e.target.closest("[data-edit]");
+  if (ed){ const t = journalTrips().find(x => x.id === ed.dataset.edit); if (t) startEdit(t); return; }
   const wb = e.target.closest("[data-waybill]");
   if (wb){ const t = journalTrips().find(x => x.id === wb.dataset.waybill); if (t) openWaybill(t.date, t.vehicleName); return; }
   const b = e.target.closest("[data-deltrip]"); if (!b) return;
@@ -1022,6 +1078,10 @@ $("#l-table").addEventListener("click", e => {
 });
 
 function whoCell(t){
+  const ed = t.editedBy ? `<div class="sub">змінив: ${esc(t.editedBy)}</div>` : "";
+  return whoBase(t) + ed;
+}
+function whoBase(t){
   const mine = t.device && t.device === state.me.id;
   const name = t.author || (t.device ? "" : "—");
   return `${esc(name)}${mine ? ` <span class="chip" title="Внесено з цього пристрою">цей пристрій</span>` : (t.device ? ` <span class="sub" title="Внесено з іншого пристрою">інший пристрій</span>` : "")}`;
@@ -1037,12 +1097,12 @@ const COLS = [
   ["km","Км",1],["fuel","Вид пального"],["cons","Витрата, л/100 км",1],["liters","Літри",2],["fuelPrice","Ціна пального, грн/л",2],["fuelCost","Пальне, грн",2],
   ["amortPerKm","Амортизація, грн/км",2],["amortCost","Амортизація, грн",2],
   ["total","Разом, грн",2],["perKm","Грн/км",2],["orderSum","Сума замовлення, грн",2],
-  ["id","ID рейсу"],["createdAt","Створено"],["author","Хто заповнив"],["device","ID пристрою"]
+  ["id","ID рейсу"],["createdAt","Створено"],["author","Хто заповнив"],["device","ID пристрою"],["editedBy","Змінив"],["editedAt","Змінено"],["pointsJson","Точки (JSON)"]
 ];
 function tripToRow(t){
   const r = {};
   for (const [k,h,d] of COLS){
-    const v = t[k];
+    const v = k === "pointsJson" ? (Array.isArray(t.stops) ? JSON.stringify({ stops:t.stops.map(({label,addr,lat,lon}) => ({label,addr,lat,lon})), legs:t.legs || [] }) : "") : t[k];
     r[h] = d !== undefined ? (v === null || v === undefined || v === "" ? "" : round(num(v), d)) : (v ?? "");
   }
   return r;
@@ -1051,6 +1111,8 @@ function rowToTrip(r){
   const t = { remote:true, synced:true };
   for (const [k,h,d] of COLS){ const v = r[h] ?? ""; t[k] = d !== undefined ? (v === "" ? (k === "orderSum" ? null : 0) : num(String(v).replace(/\s/g,""))) : String(v); }
   t.date = normDate(t.date); normTrip(t);
+  if (t.pointsJson){ try { const pj = JSON.parse(t.pointsJson); t.stops = pj.stops; t.legs = pj.legs; } catch {} }
+  delete t.pointsJson;
   if (!t.id) t.id = "row-" + Math.random().toString(36).slice(2,9);
   return t;
 }
@@ -1171,6 +1233,7 @@ async function pushPending(quiet){
   const pend = state.trips.filter(t => !t.synced);
   if (!sheetOn() || !pend.length) return 0;
   try {
+    for (const t of pend.filter(x => x.replace)){ await sheetCall({ action:"delete", id:t.id }); t.replace = false; }
     await sheetCall({ action:"add", rows:pend.map(tripToRow) });
     pend.forEach(t => t.synced = true); persist();
     return pend.length;
